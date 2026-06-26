@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from .models import SongRequest
-from .views import preview_song_link, yandex_track_ids
+from .views import preview_song_link, vk_audio_ids, vk_track_preview, yandex_track_ids
 
 
 class SongRequestApiTests(APITestCase):
@@ -74,6 +74,36 @@ class SongRequestApiTests(APITestCase):
 
 
 class SongLinkPreviewTests(SimpleTestCase):
+    def test_vk_audio_ids_from_shared_url(self):
+        ids = vk_audio_ids("https://vk.com/audio-2001652521_86652521")
+
+        self.assertEqual(ids, {"owner_id": "-2001652521", "audio_id": "86652521"})
+
+    @override_settings(VK_ACCESS_TOKEN="vk-token")
+    @patch("songs.views.fetch_json")
+    def test_vk_track_preview_uses_vk_api(self, fetch_json):
+        fetch_json.return_value = {
+            "response": [
+                {
+                    "title": "Сквозь",
+                    "artist": "Борисов Павел",
+                }
+            ]
+        }
+
+        preview = vk_track_preview("https://vk.com/audio-2001652521_86652521")
+
+        self.assertEqual(preview["song_title"], "Сквозь")
+        self.assertEqual(preview["artist"], "Борисов Павел")
+        self.assertEqual(preview["source"], "vk")
+        fetch_json.assert_called_once()
+
+    @override_settings(VK_ACCESS_TOKEN="")
+    def test_vk_track_preview_without_token_is_empty(self):
+        preview = vk_track_preview("https://vk.com/audio-2001652521_86652521")
+
+        self.assertEqual(preview, {"song_title": "", "artist": "", "source": "vk"})
+
     def test_yandex_track_ids_from_shared_url(self):
         ids = yandex_track_ids(
             "https://music.yandex.ru/album/5060850/track/2215069"

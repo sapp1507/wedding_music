@@ -75,6 +75,21 @@ def yandex_track_ids(url):
     return match.groupdict()
 
 
+def vk_audio_ids(url):
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").removeprefix("www.")
+    if hostname not in {"vk.com", "m.vk.com"}:
+        return None
+
+    match = re.search(r"/audio(?P<owner_id>-?\d+)_(?P<audio_id>\d+)", parsed.path)
+    if not match:
+        query_match = re.search(r"(?:^|[?&])z=audio(?P<owner_id>-?\d+)_(?P<audio_id>\d+)", parsed.query)
+        match = query_match
+    if not match:
+        return None
+    return match.groupdict()
+
+
 def fetch_json(url, headers=None):
     validate_public_http_url(url)
     request = Request(
@@ -154,6 +169,19 @@ def clean_title(value):
     return value
 
 
+def is_generic_preview_title(value):
+    title = clean_title(value).lower()
+    return title in {
+        "",
+        "vk",
+        "vkontakte",
+        "вконтакте",
+        "вконтакте | вконтакте",
+        "вконтакте | добро пожаловать",
+        "яндекс музыка — собираем музыку для вас",
+    }
+
+
 def split_artist_and_title(title, author=""):
     title = clean_title(title)
     author = clean_title(author)
@@ -227,8 +255,41 @@ def songlink_preview(url):
     }
 
 
+def vk_track_preview(url):
+    ids = vk_audio_ids(url)
+    if not ids:
+        return None
+    if not settings.VK_ACCESS_TOKEN:
+        return {"song_title": "", "artist": "", "source": "vk"}
+
+    params = {
+        "audios": f"{ids['owner_id']}_{ids['audio_id']}",
+        "access_token": settings.VK_ACCESS_TOKEN,
+        "v": "5.131",
+    }
+    data = fetch_json(f"https://api.vk.com/method/audio.getById?{urlencode(params)}")
+    if data.get("error"):
+        raise ValueError(data["error"].get("error_msg", "VK API error"))
+    tracks = data.get("response", [])
+    track = tracks[0] if tracks else {}
+    return {
+        "song_title": clean_title(track.get("title", "")),
+        "artist": clean_title(track.get("artist", "")),
+        "source": "vk",
+    }
+
+
 def preview_song_link(url):
     validate_public_http_url(url)
+    try:
+        vk_preview = vk_track_preview(url)
+        if vk_preview is not None and (
+            vk_preview["song_title"] or vk_preview["artist"]
+        ):
+            return vk_preview
+    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        pass
+
     try:
         yandex_preview = yandex_track_preview(url)
         if yandex_preview is not None and (
@@ -276,6 +337,8 @@ def preview_song_link(url):
         or meta.get("author")
     )
     artist, song_title = split_artist_and_title(title, artist)
+    if is_generic_preview_title(song_title) and not artist:
+        return {"song_title": "", "artist": "", "source": "meta"}
     return {
         "song_title": song_title,
         "artist": artist,
