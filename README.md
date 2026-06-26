@@ -71,3 +71,93 @@ http://127.0.0.1:5173/admin-list
 - `GET /api/songs/` - все заявки, staff only
 - `PATCH /api/songs/{id}/approve/` - модерация, staff only
 - `GET /api/songs/export/` - CSV export, staff only
+
+## Запуск на сервере в Docker
+
+Самый простой запуск:
+
+```bash
+./scripts/deploy.sh up
+```
+
+Скрипт при первом запуске создаст `.env.server`, сгенерирует секреты, соберёт контейнеры, применит миграции, соберёт static files и создаст суперпользователя.
+
+В конце запуска будет выведено:
+
+```text
+Public URL: ...
+Admin URL:  ...
+Admin user: ...
+Admin pass: ...
+```
+
+Эти же данные пишутся в лог backend-контейнера при создании пользователя:
+
+```bash
+./scripts/deploy.sh logs backend
+```
+
+Админка доступна по `/admin/`. Сменить пароль можно штатно в Django admin: `Users` → нужный пользователь → `Password`.
+
+Если пользователь уже существует, пароль при рестарте не сбрасывается, чтобы смена пароля в админке не терялась. Для принудительного сброса пароля из `.env.server` выставьте:
+
+```env
+DJANGO_SUPERUSER_FORCE_PASSWORD=1
+```
+
+и выполните:
+
+```bash
+./scripts/deploy.sh restart
+```
+
+После успешного сброса верните `DJANGO_SUPERUSER_FORCE_PASSWORD=0`.
+
+### Настройка домена и портов
+
+Перед запуском можно отредактировать `.env.server`. Если файла ещё нет:
+
+```bash
+cp .env.server.example .env.server
+```
+
+Основные параметры:
+
+```env
+APP_DOMAIN=music.example.com
+APP_HOST=0.0.0.0
+APP_PORT=8080
+BACKEND_PORT=8000
+PUBLIC_URL=https://music.example.com
+
+DJANGO_ALLOWED_HOSTS=music.example.com,127.0.0.1,localhost,backend
+CSRF_TRUSTED_ORIGINS=https://music.example.com
+CORS_ALLOWED_ORIGINS=https://music.example.com
+```
+
+Если на сервере уже есть nginx/caddy/traefik, обычно приложение оставляют на локальном порту:
+
+```env
+APP_HOST=127.0.0.1
+APP_PORT=18080
+PUBLIC_URL=https://music.example.com
+```
+
+и внешний reverse proxy направляет трафик на `http://127.0.0.1:18080`.
+
+`APP_PORT` - внешний порт nginx/frontend-контейнера. `BACKEND_PORT` - внутренний порт Django/gunicorn внутри docker-сети, обычно его менять не нужно. PostgreSQL в `docker-compose.prod.yml` не публикует порт на хост и доступен только контейнерам этого приложения во внутренней сети Docker. Поэтому он не мешает установленному на сервере PostgreSQL или другим compose-проектам.
+
+Для локального dev-only PostgreSQL из `docker-compose.yml` порт вынесен в переменную:
+
+```bash
+POSTGRES_PORT=55433 docker compose up -d postgres
+```
+
+### Управление
+
+```bash
+./scripts/deploy.sh up       # собрать и запустить
+./scripts/deploy.sh restart  # пересобрать и перезапустить
+./scripts/deploy.sh logs     # смотреть все логи
+./scripts/deploy.sh down     # остановить
+```
