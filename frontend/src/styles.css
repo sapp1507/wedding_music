@@ -463,6 +463,7 @@ textarea {
   flex: 0 0 auto;
   gap: 8px;
   justify-content: flex-end;
+  position: relative;
 }
 
 .admin-row button {
@@ -490,6 +491,31 @@ textarea {
 .admin-row button.danger-row-action {
   background: #ffe0dc;
   color: #8d1f14;
+}
+
+.delete-confirm-popover {
+  background: #fff;
+  border: 1px solid #e4b0a9;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(33, 27, 24, 0.18);
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+  padding: 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 3;
+}
+
+.delete-confirm-popover span {
+  color: #6c6259;
+  overflow-wrap: anywhere;
+}
+
+.delete-confirm-popover div {
+  display: flex;
+  gap: 8px;
 }
 
 .login-form {
@@ -539,6 +565,12 @@ textarea {
   .input-with-action {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .delete-confirm-popover {
+    min-width: 0;
+    position: static;
+    width: 100%;
   }
 
   .field-action {

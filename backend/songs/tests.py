@@ -121,6 +121,21 @@ class SongRequestApiTests(APITestCase):
         )
         self.assertTrue(response.data["has_secret"])
 
+    @override_settings(PUBLIC_URL="https://music.example.com", SONG_REQUEST_SECRET="")
+    def test_share_links_omit_secret_when_not_configured(self):
+        user = get_user_model().objects.create_user(
+            username="admin",
+            password="password",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.get("/api/share-links/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["request_url"], "https://music.example.com/")
+        self.assertFalse(response.data["has_secret"])
+
 
 class SongLinkPreviewTests(SimpleTestCase):
     def test_vk_audio_ids_from_shared_url(self):

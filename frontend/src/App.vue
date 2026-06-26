@@ -52,6 +52,7 @@ const errorMessage = ref("");
 const adminError = ref("");
 const djError = ref("");
 const shareStatus = ref("");
+const confirmDeleteId = ref(null);
 const authUser = ref(null);
 const loginForm = reactive({
   username: "",
@@ -184,22 +185,32 @@ async function loadAdminSongs() {
       return;
     }
     adminSongs.value = await fetchAllSongs();
-    await loadShareLinks();
   } catch (error) {
     adminError.value = error.message;
   }
 }
 
 async function loadShareLinks() {
-  shareLinks.value = await fetchShareLinks();
-  qrCodes.dj_url = await QRCode.toDataURL(shareLinks.value.dj_url, {
-    margin: 1,
-    width: 180,
-  });
-  qrCodes.request_url = await QRCode.toDataURL(shareLinks.value.request_url, {
-    margin: 1,
-    width: 180,
-  });
+  adminError.value = "";
+  try {
+    await fetchCsrfToken();
+    authUser.value = await fetchCurrentUser();
+    if (!isAdmin.value) {
+      shareLinks.value = null;
+      return;
+    }
+    shareLinks.value = await fetchShareLinks();
+    qrCodes.dj_url = await QRCode.toDataURL(shareLinks.value.dj_url, {
+      margin: 1,
+      width: 180,
+    });
+    qrCodes.request_url = await QRCode.toDataURL(shareLinks.value.request_url, {
+      margin: 1,
+      width: 180,
+    });
+  } catch (error) {
+    adminError.value = error.message;
+  }
 }
 
 async function copyShareLink(key) {
@@ -259,6 +270,7 @@ async function submitLogin() {
     authUser.value = await loginAdmin(loginForm);
     loginForm.password = "";
     await loadAdminSongs();
+    await loadShareLinks();
   } catch (error) {
     adminError.value = error.message;
   } finally {
@@ -322,20 +334,27 @@ async function detectAdminSong(song) {
 
 async function deleteAdminSong(song) {
   adminError.value = "";
-  const title = song.song_title || song.link || "эту заявку";
-  if (!window.confirm(`Удалить безвозвратно: ${title}?`)) {
-    return;
-  }
-
   rowActions[song.id] = "delete";
   try {
     await deleteSongRequest(song.id);
     adminSongs.value = adminSongs.value.filter((item) => item.id !== song.id);
+    confirmDeleteId.value = null;
     await loadPublicSongs();
   } catch (error) {
     adminError.value = error.message;
   } finally {
     delete rowActions[song.id];
+  }
+}
+
+function requestDeleteConfirmation(song) {
+  adminError.value = "";
+  confirmDeleteId.value = confirmDeleteId.value === song.id ? null : song.id;
+}
+
+function cancelDeleteConfirmation(song) {
+  if (confirmDeleteId.value === song.id) {
+    confirmDeleteId.value = null;
   }
 }
 
@@ -417,6 +436,13 @@ onUnmounted(() => {
           @click="activeTab = 'admin'; loadAdminSongs()"
         >
           Модерация
+        </button>
+        <button
+          v-if="isAdminView"
+          :class="{ active: activeTab === 'links' }"
+          @click="activeTab = 'links'; loadShareLinks()"
+        >
+          QR
         </button>
         <button v-else @click="goToAdminLogin">
           Войти
@@ -533,38 +559,6 @@ onUnmounted(() => {
       </form>
 
       <template v-else>
-        <section v-if="shareLinks" class="share-panel" aria-label="Ссылки для гостей и DJ">
-          <article class="share-card">
-            <div>
-              <h3>DJ</h3>
-              <p>Страница с одобренными треками.</p>
-              <code>{{ shareLinks.dj_url }}</code>
-            </div>
-            <button class="qr-button" @click="copyShareQr('dj_url')">
-              <img :src="qrCodes.dj_url" alt="QR-код страницы DJ" />
-              <span>Копировать QR</span>
-            </button>
-            <button class="text-copy-action" @click="copyShareLink('dj_url')">
-              Копировать ссылку для {{ shareLabel("dj_url") }}
-            </button>
-          </article>
-
-          <article class="share-card">
-            <div>
-              <h3>Гости</h3>
-              <p>Страница добавления треков{{ shareLinks.has_secret ? " с секретом." : "." }}</p>
-              <code>{{ shareLinks.request_url }}</code>
-            </div>
-            <button class="qr-button" @click="copyShareQr('request_url')">
-              <img :src="qrCodes.request_url" alt="QR-код страницы добавления треков" />
-              <span>Копировать QR</span>
-            </button>
-            <button class="text-copy-action" @click="copyShareLink('request_url')">
-              Копировать ссылку для {{ shareLabel("request_url") }}
-            </button>
-          </article>
-        </section>
-
         <article
           v-for="song in adminSongs"
           :key="song.id"
@@ -596,14 +590,92 @@ onUnmounted(() => {
             <button
               class="danger-row-action"
               :disabled="!!rowActions[song.id]"
-              @click="deleteAdminSong(song)"
+              @click="requestDeleteConfirmation(song)"
             >
-              {{ rowActions[song.id] === "delete" ? "Удаляем..." : "Удалить" }}
+              Удалить
             </button>
+            <div v-if="confirmDeleteId === song.id" class="delete-confirm-popover" role="dialog" aria-modal="false">
+              <strong>Удалить безвозвратно?</strong>
+              <span>{{ song.song_title || song.link || "Эта заявка" }}</span>
+              <div>
+                <button
+                  class="danger-row-action"
+                  :disabled="rowActions[song.id] === 'delete'"
+                  @click="deleteAdminSong(song)"
+                >
+                  {{ rowActions[song.id] === "delete" ? "Удаляем..." : "Да, удалить" }}
+                </button>
+                <button
+                  class="muted-row-action"
+                  :disabled="rowActions[song.id] === 'delete'"
+                  @click="cancelDeleteConfirmation(song)"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
           </div>
         </article>
         <p v-if="!adminSongs.length" class="empty-state">Заявок пока нет.</p>
       </template>
+    </section>
+
+    <section v-if="activeTab === 'links'" class="admin-panel">
+      <div class="admin-header">
+        <div>
+          <h2>QR и ссылки</h2>
+          <p v-if="isAdmin">Вы вошли как {{ authUser.username }}</p>
+        </div>
+        <button v-if="isAdmin" class="secondary-action muted" @click="submitLogout">Выйти</button>
+      </div>
+      <p v-if="adminError" class="status error">{{ adminError }}</p>
+      <p v-if="shareStatus" class="status success">{{ shareStatus }}</p>
+
+      <form v-if="!isAdmin" class="login-form" @submit.prevent="submitLogin">
+        <label>
+          Логин администратора
+          <input v-model.trim="loginForm.username" autocomplete="username" required />
+        </label>
+        <label>
+          Пароль
+          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-action" :disabled="isLoggingIn">
+          {{ isLoggingIn ? "Входим..." : "Войти" }}
+        </button>
+      </form>
+
+      <section v-else-if="shareLinks" class="share-panel" aria-label="Ссылки для гостей и DJ">
+        <article class="share-card">
+          <div>
+            <h3>DJ</h3>
+            <p>Страница с одобренными треками.</p>
+            <code>{{ shareLinks.dj_url }}</code>
+          </div>
+          <button class="qr-button" @click="copyShareQr('dj_url')">
+            <img :src="qrCodes.dj_url" alt="QR-код страницы DJ" />
+            <span>Копировать QR</span>
+          </button>
+          <button class="text-copy-action" @click="copyShareLink('dj_url')">
+            Копировать ссылку для {{ shareLabel("dj_url") }}
+          </button>
+        </article>
+
+        <article class="share-card">
+          <div>
+            <h3>Гости</h3>
+            <p>Страница добавления треков{{ shareLinks.has_secret ? " с секретом." : "." }}</p>
+            <code>{{ shareLinks.request_url }}</code>
+          </div>
+          <button class="qr-button" @click="copyShareQr('request_url')">
+            <img :src="qrCodes.request_url" alt="QR-код страницы добавления треков" />
+            <span>Копировать QR</span>
+          </button>
+          <button class="text-copy-action" @click="copyShareLink('request_url')">
+            Копировать ссылку для {{ shareLabel("request_url") }}
+          </button>
+        </article>
+      </section>
     </section>
   </main>
 </template>
