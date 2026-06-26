@@ -152,6 +152,7 @@ activemq-data/
 .env
 .env.server
 .envrc
+docker/nginx/generated/
 .venv
 env/
 venv/

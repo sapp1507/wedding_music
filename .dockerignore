@@ -9,3 +9,4 @@ frontend/node_modules
 __pycache__
 .env
 .env.server
+docker/nginx/generated

@@ -5,10 +5,12 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ENV_FILE="$ROOT_DIR/.env.server"
 EXAMPLE_FILE="$ROOT_DIR/.env.server.example"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.prod.yml"
+NGINX_GENERATED_DIR="$ROOT_DIR/docker/nginx/generated"
+NGINX_CONFIG="$NGINX_GENERATED_DIR/default.conf"
 
 random_secret() {
     if command -v openssl >/dev/null 2>&1; then
-        openssl rand -base64 36 | tr -d '\n'
+        openssl rand -hex 32 | tr -d '\n'
     else
         date +%s%N | sha256sum | cut -d ' ' -f 1
     fi
@@ -21,6 +23,84 @@ replace_env_value() {
     sed -i "s/^${key}=.*/${key}=${escaped_value}/" "$ENV_FILE"
 }
 
+append_env_value_if_missing() {
+    key="$1"
+    value="$2"
+    if ! grep -q "^${key}=" "$ENV_FILE"; then
+        printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+    fi
+}
+
+env_value() {
+    key="$1"
+    default="$2"
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        grep "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d '=' -f 2-
+    else
+        printf '%s' "$default"
+    fi
+}
+
+render_nginx_config() {
+    mode="$1"
+    app_domain=$(env_value APP_DOMAIN localhost)
+    backend_port=$(env_value BACKEND_PORT 8000)
+
+    mkdir -p "$NGINX_GENERATED_DIR"
+    if [ "$mode" = "https" ]; then
+        template="$ROOT_DIR/docker/nginx/https.conf.template"
+    else
+        template="$ROOT_DIR/docker/nginx/http.conf.template"
+    fi
+
+    sed \
+        -e "s/__APP_DOMAIN__/${app_domain}/g" \
+        -e "s/__BACKEND_PORT__/${backend_port}/g" \
+        "$template" > "$NGINX_CONFIG"
+}
+
+compose() {
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+issue_certificate() {
+    app_domain=$(env_value APP_DOMAIN localhost)
+    email=$(env_value LETSENCRYPT_EMAIL "")
+
+    if [ "$app_domain" = "localhost" ] || [ "$app_domain" = "127.0.0.1" ]; then
+        echo "ENABLE_HTTPS=1 requires a real public domain in APP_DOMAIN."
+        exit 1
+    fi
+    if [ -z "$email" ] || [ "$email" = "admin@example.com" ]; then
+        echo "Set LETSENCRYPT_EMAIL in .env.server before enabling HTTPS."
+        exit 1
+    fi
+
+    staging_flag=""
+    if [ "$(env_value LETSENCRYPT_STAGING 0)" = "1" ]; then
+        staging_flag="--staging"
+    fi
+
+    if compose run --rm --entrypoint sh certbot -c "test -f /etc/letsencrypt/live/$app_domain/fullchain.pem"; then
+        echo "Certificate for $app_domain already exists."
+        return
+    fi
+
+    compose run --rm certbot certonly \
+        --webroot \
+        -w /var/www/certbot \
+        -d "$app_domain" \
+        --email "$email" \
+        --agree-tos \
+        --no-eff-email \
+        $staging_flag
+}
+
+renew_certificate() {
+    compose run --rm certbot renew --webroot -w /var/www/certbot
+    compose exec nginx nginx -s reload || true
+}
+
 if [ ! -f "$ENV_FILE" ]; then
     cp "$EXAMPLE_FILE" "$ENV_FILE"
     replace_env_value DJANGO_SECRET_KEY "$(random_secret)"
@@ -30,27 +110,55 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Created .env.server with generated secrets."
 fi
 
+append_env_value_if_missing APP_HTTP_PORT "$(env_value APP_PORT 80)"
+append_env_value_if_missing APP_HTTPS_PORT "443"
+append_env_value_if_missing ENABLE_HTTPS "0"
+append_env_value_if_missing LETSENCRYPT_EMAIL "admin@example.com"
+append_env_value_if_missing GUNICORN_WORKERS "1"
+
 COMMAND="${1:-up}"
 
 case "$COMMAND" in
     up)
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+        render_nginx_config http
+        compose up -d --build --remove-orphans postgres backend nginx
+        if [ "$(env_value ENABLE_HTTPS 0)" = "1" ]; then
+            issue_certificate
+            render_nginx_config https
+            compose up -d --build --remove-orphans nginx
+        fi
         ;;
     down)
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down
+        compose down --remove-orphans
         ;;
     logs)
         if [ "${2:-}" ]; then
-            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs -f "$2"
+            compose logs -f "$2"
         else
-            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs -f
+            compose logs -f
         fi
         ;;
     restart)
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+        render_nginx_config http
+        compose up -d --build --remove-orphans postgres backend nginx
+        if [ "$(env_value ENABLE_HTTPS 0)" = "1" ]; then
+            issue_certificate
+            render_nginx_config https
+            compose up -d --build --remove-orphans nginx
+        fi
+        ;;
+    cert)
+        render_nginx_config http
+        compose up -d --build --remove-orphans postgres backend nginx
+        issue_certificate
+        render_nginx_config https
+        compose up -d --build --remove-orphans nginx
+        ;;
+    renew)
+        renew_certificate
         ;;
     *)
-        echo "Usage: ./scripts/deploy.sh [up|down|logs|restart]"
+        echo "Usage: ./scripts/deploy.sh [up|down|logs|restart|cert|renew]"
         exit 1
         ;;
 esac
@@ -67,5 +175,7 @@ if [ "$COMMAND" = "up" ] || [ "$COMMAND" = "restart" ]; then
     echo "Admin user: $ADMIN_USERNAME"
     echo "Admin pass: $ADMIN_PASSWORD"
     echo ""
+    echo "Nginx service: nginx"
     echo "Use './scripts/deploy.sh logs backend' to watch migrations and admin creation."
+    echo "Use './scripts/deploy.sh logs nginx' to watch the public reverse proxy."
 fi
