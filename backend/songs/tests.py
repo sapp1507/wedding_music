@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.test import override_settings, SimpleTestCase
 from django.urls import reverse
@@ -102,3 +103,36 @@ class SongLinkPreviewTests(SimpleTestCase):
         self.assertEqual(preview["artist"], "Любэ")
         self.assertEqual(preview["source"], "yandex")
         fetch_json.assert_called_once()
+
+    @patch("songs.views.validate_public_http_url")
+    @patch("songs.views.fetch_json")
+    def test_yandex_track_preview_falls_back_to_songlink(self, fetch_json, validate_public_http_url):
+        fetch_json.side_effect = [
+            HTTPError(
+                "https://api.music.yandex.net/tracks/2215069:5060850",
+                451,
+                "Unavailable For Legal Reasons",
+                {},
+                None,
+            ),
+            {
+                "entityUniqueId": "YANDEX_SONG::2215069",
+                "entitiesByUniqueId": {
+                    "YANDEX_SONG::2215069": {
+                        "type": "song",
+                        "title": "Конь",
+                        "artistName": "Николай Расторгуев",
+                    }
+                },
+            },
+        ]
+
+        preview = preview_song_link(
+            "https://music.yandex.ru/album/5060850/track/2215069"
+            "?utm_source=web&utm_medium=copy_link"
+        )
+
+        self.assertEqual(preview["song_title"], "Конь")
+        self.assertEqual(preview["artist"], "Николай Расторгуев")
+        self.assertEqual(preview["source"], "songlink")
+        self.assertEqual(fetch_json.call_count, 2)

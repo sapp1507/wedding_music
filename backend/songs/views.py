@@ -203,25 +203,64 @@ def yandex_track_preview(url):
     }
 
 
+def songlink_preview(url):
+    data = fetch_json(
+        f"https://api.song.link/v1-alpha.1/links?{urlencode({'url': url})}"
+    )
+    entity_id = data.get("entityUniqueId")
+    entities = data.get("entitiesByUniqueId", {})
+    entity = entities.get(entity_id)
+    if not isinstance(entity, dict):
+        entity = next(
+            (
+                item
+                for item in entities.values()
+                if isinstance(item, dict) and item.get("type") == "song"
+            ),
+            {},
+        )
+
+    return {
+        "song_title": clean_title(entity.get("title", "")),
+        "artist": clean_title(entity.get("artistName", "")),
+        "source": "songlink",
+    }
+
+
 def preview_song_link(url):
     validate_public_http_url(url)
-    yandex_preview = yandex_track_preview(url)
-    if yandex_preview is not None:
-        return yandex_preview
+    try:
+        yandex_preview = yandex_track_preview(url)
+        if yandex_preview is not None and (
+            yandex_preview["song_title"] or yandex_preview["artist"]
+        ):
+            return yandex_preview
+    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        pass
 
     endpoint = oembed_endpoint_for(url)
     if endpoint:
-        data = fetch_json(endpoint)
-        artist, song_title = split_artist_and_title(
-            data.get("title", ""),
-            data.get("author_name", ""),
-        )
-        if song_title or artist:
-            return {
-                "song_title": song_title,
-                "artist": artist,
-                "source": "oembed",
-            }
+        try:
+            data = fetch_json(endpoint)
+            artist, song_title = split_artist_and_title(
+                data.get("title", ""),
+                data.get("author_name", ""),
+            )
+            if song_title or artist:
+                return {
+                    "song_title": song_title,
+                    "artist": artist,
+                    "source": "oembed",
+                }
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+            pass
+
+    try:
+        songlink = songlink_preview(url)
+        if songlink["song_title"] or songlink["artist"]:
+            return songlink
+    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        pass
 
     meta, page_title = fetch_html_meta(url)
     title = (
