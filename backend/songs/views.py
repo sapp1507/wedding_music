@@ -63,13 +63,26 @@ OEMBED_ENDPOINTS = {
 }
 
 
-def fetch_json(url):
+def yandex_track_ids(url):
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").removeprefix("www.")
+    if hostname not in {"music.yandex.ru", "music.yandex.com"}:
+        return None
+
+    match = re.search(r"/album/(?P<album_id>\d+)/track/(?P<track_id>\d+)", parsed.path)
+    if not match:
+        return None
+    return match.groupdict()
+
+
+def fetch_json(url, headers=None):
     validate_public_http_url(url)
     request = Request(
         url,
         headers={
             "Accept": "application/json",
             "User-Agent": "wedding-music/1.0",
+            **(headers or {}),
         },
     )
     with urlopen(request, timeout=5) as response:
@@ -161,8 +174,41 @@ def split_artist_and_title(title, author=""):
     return author, title
 
 
+def yandex_track_preview(url):
+    ids = yandex_track_ids(url)
+    if not ids:
+        return None
+
+    data = fetch_json(
+        "https://api.music.yandex.net/tracks/"
+        f"{ids['track_id']}:{ids['album_id']}",
+        headers={
+            "User-Agent": "YandexMusicAndroid/24022951 wedding-music/1.0",
+            "X-Yandex-Music-Client": "YandexMusicAndroid/24022951",
+        },
+    )
+    result = data.get("result", [])
+    track = result[0] if isinstance(result, list) and result else result
+    if not isinstance(track, dict):
+        return {"song_title": "", "artist": "", "source": "yandex"}
+
+    return {
+        "song_title": clean_title(track.get("title", "")),
+        "artist": ", ".join(
+            clean_title(artist.get("name", ""))
+            for artist in track.get("artists", [])
+            if artist.get("name")
+        ),
+        "source": "yandex",
+    }
+
+
 def preview_song_link(url):
     validate_public_http_url(url)
+    yandex_preview = yandex_track_preview(url)
+    if yandex_preview is not None:
+        return yandex_preview
+
     endpoint = oembed_endpoint_for(url)
     if endpoint:
         data = fetch_json(endpoint)

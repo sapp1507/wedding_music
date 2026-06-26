@@ -79,6 +79,10 @@ function resetForm() {
   form.comment = "";
 }
 
+function goToAdminLogin() {
+  window.location.href = "/admin-list";
+}
+
 async function loadPublicSongs() {
   publicSongs.value = await fetchPublicSongs();
 }
@@ -268,6 +272,9 @@ onUnmounted(() => {
           @click="activeTab = 'admin'; loadAdminSongs()"
         >
           Модерация
+        </button>
+        <button v-else @click="goToAdminLogin">
+          Войти
         </button>
       </nav>
     </section>

@@ -1,8 +1,11 @@
-from django.test import override_settings
+from unittest.mock import patch
+
+from django.test import override_settings, SimpleTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from .models import SongRequest
+from .views import preview_song_link, yandex_track_ids
 
 
 class SongRequestApiTests(APITestCase):
@@ -67,3 +70,35 @@ class SongRequestApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+
+
+class SongLinkPreviewTests(SimpleTestCase):
+    def test_yandex_track_ids_from_shared_url(self):
+        ids = yandex_track_ids(
+            "https://music.yandex.ru/album/5060850/track/2215069"
+            "?utm_source=web&utm_medium=copy_link"
+        )
+
+        self.assertEqual(ids, {"album_id": "5060850", "track_id": "2215069"})
+
+    @patch("songs.views.validate_public_http_url")
+    @patch("songs.views.fetch_json")
+    def test_yandex_track_preview_uses_track_api(self, fetch_json, validate_public_http_url):
+        fetch_json.return_value = {
+            "result": [
+                {
+                    "title": "Конь",
+                    "artists": [{"name": "Любэ"}],
+                }
+            ]
+        }
+
+        preview = preview_song_link(
+            "https://music.yandex.ru/album/5060850/track/2215069"
+            "?utm_source=web&utm_medium=copy_link"
+        )
+
+        self.assertEqual(preview["song_title"], "Конь")
+        self.assertEqual(preview["artist"], "Любэ")
+        self.assertEqual(preview["source"], "yandex")
+        fetch_json.assert_called_once()
