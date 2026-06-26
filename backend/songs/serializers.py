@@ -23,8 +23,8 @@ class SongRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "approved", "created_at", "moment_display"]
 
     def validate(self, attrs):
-        song_title = attrs.get("song_title", "")
-        link = attrs.get("link", "")
+        song_title = attrs.get("song_title", getattr(self.instance, "song_title", ""))
+        link = attrs.get("link", getattr(self.instance, "link", ""))
         if not song_title and not link:
             raise serializers.ValidationError(
                 {"song_title": "Укажите название трека или ссылку."}

@@ -1,18 +1,22 @@
 <script setup>
+import QRCode from "qrcode";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 
 import {
   createSongRequest,
   csvExportUrl,
+  deleteSongRequest,
   fetchAllSongs,
   fetchCsrfToken,
   fetchCurrentUser,
   fetchMoments,
   fetchPublicSongs,
+  fetchShareLinks,
   loginAdmin,
   logoutAdmin,
   previewSongLink,
   setSongApproval,
+  updateSongRequest,
 } from "./services/api";
 
 const form = reactive({
@@ -34,6 +38,11 @@ const DEFAULT_MOMENTS = [
 const moments = ref(DEFAULT_MOMENTS);
 const publicSongs = ref([]);
 const adminSongs = ref([]);
+const shareLinks = ref(null);
+const qrCodes = reactive({
+  dj_url: "",
+  request_url: "",
+});
 const activeTab = ref("request");
 const isSubmitting = ref(false);
 const isPreviewingLink = ref(false);
@@ -42,11 +51,13 @@ const successMessage = ref("");
 const errorMessage = ref("");
 const adminError = ref("");
 const djError = ref("");
+const shareStatus = ref("");
 const authUser = ref(null);
 const loginForm = reactive({
   username: "",
   password: "",
 });
+const rowActions = reactive({});
 const isLoggingIn = ref(false);
 
 const canSubmit = computed(() => {
@@ -173,9 +184,71 @@ async function loadAdminSongs() {
       return;
     }
     adminSongs.value = await fetchAllSongs();
+    await loadShareLinks();
   } catch (error) {
     adminError.value = error.message;
   }
+}
+
+async function loadShareLinks() {
+  shareLinks.value = await fetchShareLinks();
+  qrCodes.dj_url = await QRCode.toDataURL(shareLinks.value.dj_url, {
+    margin: 1,
+    width: 180,
+  });
+  qrCodes.request_url = await QRCode.toDataURL(shareLinks.value.request_url, {
+    margin: 1,
+    width: 180,
+  });
+}
+
+async function copyShareLink(key) {
+  if (!shareLinks.value?.[key]) {
+    return;
+  }
+  const value = shareLinks.value[key];
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+  } else {
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    document.body.removeChild(input);
+  }
+  shareStatus.value = key === "dj_url" ? "Ссылка для DJ скопирована." : "Ссылка для гостей скопирована.";
+  window.setTimeout(() => {
+    shareStatus.value = "";
+  }, 2500);
+}
+
+async function copyShareQr(key) {
+  if (!qrCodes[key]) {
+    return;
+  }
+  try {
+    if (!navigator.clipboard?.write || !window.ClipboardItem) {
+      throw new Error("Clipboard image copy is unavailable.");
+    }
+    const response = await fetch(qrCodes[key]);
+    const blob = await response.blob();
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    shareStatus.value = key === "dj_url" ? "QR для DJ скопирован." : "QR для гостей скопирован.";
+  } catch (error) {
+    await copyShareLink(key);
+    return;
+  }
+  window.setTimeout(() => {
+    shareStatus.value = "";
+  }, 2500);
+}
+
+function shareLabel(key) {
+  return key === "dj_url" ? "DJ" : "гостей";
 }
 
 async function submitLogin() {
@@ -213,6 +286,56 @@ async function toggleApproval(song) {
   } catch (error) {
     song.approved = !nextValue;
     adminError.value = error.message;
+  }
+}
+
+async function detectAdminSong(song) {
+  adminError.value = "";
+  if (!song.link) {
+    adminError.value = "У этой заявки нет ссылки.";
+    return;
+  }
+
+  rowActions[song.id] = "detect";
+  try {
+    const preview = await previewSongLink(song.link);
+    const payload = {};
+    if (preview.song_title) {
+      payload.song_title = preview.song_title;
+    }
+    if (preview.artist) {
+      payload.artist = preview.artist;
+    }
+    if (!Object.keys(payload).length) {
+      adminError.value = "Не удалось определить название или исполнителя.";
+      return;
+    }
+    const updatedSong = await updateSongRequest(song.id, payload);
+    Object.assign(song, updatedSong);
+    await loadPublicSongs();
+  } catch (error) {
+    adminError.value = error.message;
+  } finally {
+    delete rowActions[song.id];
+  }
+}
+
+async function deleteAdminSong(song) {
+  adminError.value = "";
+  const title = song.song_title || song.link || "эту заявку";
+  if (!window.confirm(`Удалить безвозвратно: ${title}?`)) {
+    return;
+  }
+
+  rowActions[song.id] = "delete";
+  try {
+    await deleteSongRequest(song.id);
+    adminSongs.value = adminSongs.value.filter((item) => item.id !== song.id);
+    await loadPublicSongs();
+  } catch (error) {
+    adminError.value = error.message;
+  } finally {
+    delete rowActions[song.id];
   }
 }
 
@@ -280,11 +403,6 @@ onUnmounted(() => {
           Добавьте трек, который хочется услышать на празднике. Мы соберем заявки,
           одобрим их и передадим DJ.
         </p>
-        <div class="hero-badges" aria-label="Темы вечера">
-          <span>банкет</span>
-          <span>танцы</span>
-          <span>мото-вайб</span>
-        </div>
       </div>
       <nav class="tabs" aria-label="Разделы">
         <button :class="{ active: activeTab === 'request' }" @click="activeTab = 'request'">
@@ -367,6 +485,7 @@ onUnmounted(() => {
           <article v-for="song in publicSongs.slice(0, 5)" :key="song.id">
             <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
             <span>{{ song.artist || song.guest_name }}</span>
+            <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">ссылка на трек</a>
           </article>
         </div>
         <p v-else>Пока список пуст.</p>
@@ -397,6 +516,7 @@ onUnmounted(() => {
         </div>
       </div>
       <p v-if="adminError" class="status error">{{ adminError }}</p>
+      <p v-if="shareStatus" class="status success">{{ shareStatus }}</p>
 
       <form v-if="!isAdmin" class="login-form" @submit.prevent="submitLogin">
         <label>
@@ -413,16 +533,74 @@ onUnmounted(() => {
       </form>
 
       <template v-else>
-        <article v-for="song in adminSongs" :key="song.id" class="admin-row">
+        <section v-if="shareLinks" class="share-panel" aria-label="Ссылки для гостей и DJ">
+          <article class="share-card">
+            <div>
+              <h3>DJ</h3>
+              <p>Страница с одобренными треками.</p>
+              <code>{{ shareLinks.dj_url }}</code>
+            </div>
+            <button class="qr-button" @click="copyShareQr('dj_url')">
+              <img :src="qrCodes.dj_url" alt="QR-код страницы DJ" />
+              <span>Копировать QR</span>
+            </button>
+            <button class="text-copy-action" @click="copyShareLink('dj_url')">
+              Копировать ссылку для {{ shareLabel("dj_url") }}
+            </button>
+          </article>
+
+          <article class="share-card">
+            <div>
+              <h3>Гости</h3>
+              <p>Страница добавления треков{{ shareLinks.has_secret ? " с секретом." : "." }}</p>
+              <code>{{ shareLinks.request_url }}</code>
+            </div>
+            <button class="qr-button" @click="copyShareQr('request_url')">
+              <img :src="qrCodes.request_url" alt="QR-код страницы добавления треков" />
+              <span>Копировать QR</span>
+            </button>
+            <button class="text-copy-action" @click="copyShareLink('request_url')">
+              Копировать ссылку для {{ shareLabel("request_url") }}
+            </button>
+          </article>
+        </section>
+
+        <article
+          v-for="song in adminSongs"
+          :key="song.id"
+          class="admin-row"
+          :class="song.approved ? 'is-approved' : 'is-pending'"
+        >
           <div>
             <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
             <span>{{ song.guest_name }} · {{ song.artist || "без исполнителя" }}</span>
             <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">{{ song.link }}</a>
             <p v-if="song.comment">{{ song.comment }}</p>
           </div>
-          <button :class="{ approved: song.approved }" @click="toggleApproval(song)">
-            {{ song.approved ? "Одобрено" : "Одобрить" }}
-          </button>
+          <div class="row-actions">
+            <button
+              v-if="song.link"
+              class="muted-row-action"
+              :disabled="!!rowActions[song.id]"
+              @click="detectAdminSong(song)"
+            >
+              {{ rowActions[song.id] === "detect" ? "Ищем..." : "Найти по ссылке" }}
+            </button>
+            <button
+              :class="{ approved: song.approved }"
+              :disabled="!!rowActions[song.id]"
+              @click="toggleApproval(song)"
+            >
+              {{ song.approved ? "Одобрено" : "Одобрить" }}
+            </button>
+            <button
+              class="danger-row-action"
+              :disabled="!!rowActions[song.id]"
+              @click="deleteAdminSong(song)"
+            >
+              {{ rowActions[song.id] === "delete" ? "Удаляем..." : "Удалить" }}
+            </button>
+          </div>
         </article>
         <p v-if="!adminSongs.length" class="empty-state">Заявок пока нет.</p>
       </template>

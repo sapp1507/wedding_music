@@ -1,6 +1,7 @@
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+from django.contrib.auth import get_user_model
 from django.test import override_settings, SimpleTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -71,6 +72,54 @@ class SongRequestApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+
+    @override_settings(SONG_REQUEST_SECRET="secret")
+    def test_staff_can_update_and_delete_when_secret_is_configured(self):
+        user = get_user_model().objects.create_user(
+            username="admin",
+            password="password",
+            is_staff=True,
+        )
+        song = SongRequest.objects.create(
+            guest_name="Анна",
+            link="https://example.com/track",
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            reverse("song-detail", args=[song.id]),
+            {"song_title": "Song", "artist": "Artist"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        song.refresh_from_db()
+        self.assertEqual(song.song_title, "Song")
+        self.assertEqual(song.artist, "Artist")
+
+        response = self.client.delete(reverse("song-detail", args=[song.id]))
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(SongRequest.objects.filter(id=song.id).exists())
+
+    @override_settings(PUBLIC_URL="https://music.example.com", SONG_REQUEST_SECRET="secret")
+    def test_staff_can_get_share_links(self):
+        user = get_user_model().objects.create_user(
+            username="admin",
+            password="password",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.get("/api/share-links/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["dj_url"], "https://music.example.com/dj")
+        self.assertEqual(
+            response.data["request_url"],
+            "https://music.example.com/?secret=secret",
+        )
+        self.assertTrue(response.data["has_secret"])
 
 
 class SongLinkPreviewTests(SimpleTestCase):

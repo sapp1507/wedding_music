@@ -20,6 +20,10 @@ textarea {
   font: inherit;
 }
 
+code {
+  overflow-wrap: anywhere;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -151,23 +155,6 @@ h1 {
   line-height: 1.45;
   margin: 18px 0 0;
   max-width: 620px;
-}
-
-.hero-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.hero-badges span {
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 999px;
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 800;
-  padding: 8px 12px;
 }
 
 .tabs {
@@ -327,6 +314,13 @@ textarea {
   gap: 2px;
 }
 
+.compact-list a {
+  color: #2f655f;
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .compact-list span,
 .song-card p,
 .admin-row span,
@@ -339,6 +333,77 @@ textarea {
   display: grid;
   gap: 14px;
   padding: 36px clamp(20px, 5vw, 72px);
+}
+
+.share-panel {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.share-card {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e2dad2;
+  border-radius: 8px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.share-card h3 {
+  margin: 0 0 4px;
+}
+
+.share-card p {
+  color: #6c6259;
+  margin-bottom: 10px;
+}
+
+.share-card code {
+  background: #f7f3ef;
+  border-radius: 6px;
+  color: #4d4640;
+  display: block;
+  font-size: 0.85rem;
+  padding: 8px;
+}
+
+.qr-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #2f655f;
+  cursor: pointer;
+  display: grid;
+  flex: 0 0 auto;
+  font-weight: 800;
+  gap: 8px;
+  justify-items: center;
+  padding: 0;
+}
+
+.qr-button img {
+  background: #fff;
+  border: 1px solid #d8d1ca;
+  border-radius: 8px;
+  display: block;
+  height: 132px;
+  padding: 8px;
+  width: 132px;
+}
+
+.text-copy-action {
+  background: #efe8e1;
+  border: 0;
+  border-radius: 6px;
+  color: #332c26;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 0 12px;
 }
 
 .song-card,
@@ -365,6 +430,16 @@ textarea {
   padding: 18px;
 }
 
+.admin-row.is-approved {
+  background: #f0faf4;
+  border-color: #bfe2ce;
+}
+
+.admin-row.is-pending {
+  background: #fff8ec;
+  border-color: #ead2a5;
+}
+
 .song-card h2,
 .admin-header h2 {
   margin-bottom: 4px;
@@ -382,15 +457,39 @@ textarea {
   min-width: 0;
 }
 
+.admin-row .row-actions {
+  align-items: stretch;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .admin-row button {
   background: #efe8e1;
   color: #332c26;
   flex: 0 0 auto;
 }
 
+.admin-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .admin-row button.approved {
   background: #2f655f;
   color: #fff;
+}
+
+.admin-row button.muted-row-action {
+  background: #fff;
+  border: 1px solid #d8d1ca;
+  color: #332c26;
+}
+
+.admin-row button.danger-row-action {
+  background: #ffe0dc;
+  color: #8d1f14;
 }
 
 .login-form {
@@ -421,12 +520,19 @@ textarea {
   }
 
   .content-grid,
-  .request-form {
+  .request-form,
+  .share-panel {
     grid-template-columns: 1fr;
+  }
+
+  .share-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .song-card,
   .admin-row,
+  .admin-row .row-actions,
   .admin-header,
   .dj-header,
   .dj-track,

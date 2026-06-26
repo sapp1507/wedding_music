@@ -66,6 +66,10 @@ export function fetchCurrentUser() {
   return request("/auth/me/");
 }
 
+export function fetchShareLinks() {
+  return request("/share-links/");
+}
+
 export function loginAdmin(payload) {
   return request("/auth/login/", {
     method: "POST",
@@ -91,6 +95,20 @@ export function previewSongLink(link) {
   return request("/songs/preview-link/", {
     method: "POST",
     body: JSON.stringify({ link }),
+  });
+}
+
+export function updateSongRequest(id, payload) {
+  return request(`/songs/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSongRequest(id) {
+  return request(`/songs/${id}/`, {
+    method: "DELETE",
+    headers: {},
   });
 }
 

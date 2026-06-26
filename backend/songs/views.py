@@ -6,7 +6,7 @@ import socket
 from html import unescape
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -350,6 +350,8 @@ class HasRequestSecretOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
             return True
+        if request.user and request.user.is_staff:
+            return True
         if not settings.SONG_REQUEST_SECRET:
             return True
         return request.headers.get("X-Song-Request-Secret") == settings.SONG_REQUEST_SECRET
@@ -486,6 +488,23 @@ def current_user(request):
             "is_authenticated": True,
             "is_staff": user.is_staff,
             "username": user.get_username(),
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAdminUser])
+def share_links(request):
+    base_url = settings.PUBLIC_URL.rstrip("/") or request.build_absolute_uri("/").rstrip("/")
+    request_url = urljoin(f"{base_url}/", "")
+    if settings.SONG_REQUEST_SECRET:
+        request_url = f"{request_url}?{urlencode({'secret': settings.SONG_REQUEST_SECRET})}"
+
+    return Response(
+        {
+            "dj_url": urljoin(f"{base_url}/", "dj"),
+            "request_url": request_url,
+            "has_secret": bool(settings.SONG_REQUEST_SECRET),
         }
     )
 

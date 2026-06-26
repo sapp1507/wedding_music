@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from songs.views import LoginView, LogoutView, current_user
+from songs.views import LoginView, LogoutView, current_user, share_links
 
 
 @ensure_csrf_cookie
@@ -17,5 +17,6 @@ urlpatterns = [
     path("api/auth/me/", current_user),
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/logout/", LogoutView.as_view()),
+    path("api/share-links/", share_links),
     path("api/", include("songs.urls")),
 ]
