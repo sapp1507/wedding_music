@@ -24,7 +24,14 @@ const form = reactive({
   comment: "",
 });
 
-const moments = ref([]);
+const DEFAULT_MOMENTS = [
+  { value: "dinner", label: "Фон на банкете" },
+  { value: "dance", label: "Танцы" },
+  { value: "slow", label: "Медляк" },
+  { value: "wishlist", label: "Просто хочу услышать" },
+];
+
+const moments = ref(DEFAULT_MOMENTS);
 const publicSongs = ref([]);
 const adminSongs = ref([]);
 const activeTab = ref("request");
@@ -85,6 +92,17 @@ function goToAdminLogin() {
 
 async function loadPublicSongs() {
   publicSongs.value = await fetchPublicSongs();
+}
+
+async function loadMoments() {
+  try {
+    const loadedMoments = await fetchMoments();
+    if (loadedMoments.length) {
+      moments.value = loadedMoments;
+    }
+  } catch (error) {
+    moments.value = DEFAULT_MOMENTS;
+  }
 }
 
 async function refreshDjSongs() {
@@ -201,7 +219,7 @@ async function toggleApproval(song) {
 let djRefreshTimer;
 
 onMounted(async () => {
-  moments.value = await fetchMoments();
+  loadMoments();
   if (isDjView.value) {
     await refreshDjSongs();
     djRefreshTimer = window.setInterval(refreshDjSongs, 30000);
@@ -225,9 +243,9 @@ onUnmounted(() => {
   <main v-if="isDjView" class="dj-shell">
     <header class="dj-header">
       <div>
-        <p class="eyebrow">Wedding music</p>
+        <p class="eyebrow">Алексей и Мария · 04.09.2026</p>
         <h1>Плейлист для DJ</h1>
-        <p>Только одобренные заявки. Список обновляется автоматически.</p>
+        <p>Одобренные заявки на свадебный банкет. Список обновляется автоматически.</p>
       </div>
       <button class="secondary-action" :disabled="isRefreshingDj" @click="refreshDjSongs">
         {{ isRefreshingDj ? "Обновляем..." : "Обновить" }}
@@ -255,9 +273,18 @@ onUnmounted(() => {
 
   <main v-else class="app-shell">
     <section class="intro-band">
-      <div>
-        <p class="eyebrow">Wedding music</p>
-        <h1>Музыкальные заявки гостей</h1>
+      <div class="intro-copy">
+        <p class="eyebrow">4 сентября 2026 · свадебный банкет</p>
+        <h1>Плейлист для свадьбы Алексея и Марии</h1>
+        <p class="intro-lead">
+          Добавьте трек, который хочется услышать на празднике. Мы соберем заявки,
+          одобрим их и передадим DJ.
+        </p>
+        <div class="hero-badges" aria-label="Темы вечера">
+          <span>банкет</span>
+          <span>танцы</span>
+          <span>мото-вайб</span>
+        </div>
       </div>
       <nav class="tabs" aria-label="Разделы">
         <button :class="{ active: activeTab === 'request' }" @click="activeTab = 'request'">
