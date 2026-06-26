@@ -36,6 +36,7 @@ async function request(path, options = {}) {
   if (!response.ok) {
     const message =
       data?.detail ||
+      data?.link ||
       data?.song_title ||
       data?.non_field_errors?.[0] ||
       "Не удалось выполнить запрос";
@@ -61,10 +62,35 @@ export function fetchAllSongs() {
   return request("/songs/");
 }
 
+export function fetchCurrentUser() {
+  return request("/auth/me/");
+}
+
+export function loginAdmin(payload) {
+  return request("/auth/login/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function logoutAdmin() {
+  return request("/auth/logout/", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export function createSongRequest(payload) {
   return request("/songs/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function previewSongLink(link) {
+  return request("/songs/preview-link/", {
+    method: "POST",
+    body: JSON.stringify({ link }),
   });
 }
 

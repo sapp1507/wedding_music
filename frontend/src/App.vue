@@ -1,13 +1,17 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 
 import {
   createSongRequest,
   csvExportUrl,
   fetchAllSongs,
   fetchCsrfToken,
+  fetchCurrentUser,
   fetchMoments,
   fetchPublicSongs,
+  loginAdmin,
+  logoutAdmin,
+  previewSongLink,
   setSongApproval,
 } from "./services/api";
 
@@ -25,15 +29,46 @@ const publicSongs = ref([]);
 const adminSongs = ref([]);
 const activeTab = ref("request");
 const isSubmitting = ref(false);
+const isPreviewingLink = ref(false);
+const isRefreshingDj = ref(false);
 const successMessage = ref("");
 const errorMessage = ref("");
 const adminError = ref("");
+const djError = ref("");
+const authUser = ref(null);
+const loginForm = reactive({
+  username: "",
+  password: "",
+});
+const isLoggingIn = ref(false);
 
 const canSubmit = computed(() => {
   return form.guest_name.trim() && (form.song_title.trim() || form.link.trim());
 });
 
 const isAdminView = computed(() => window.location.pathname.startsWith("/admin-list"));
+const isDjView = computed(() => window.location.pathname.startsWith("/dj"));
+const isAdmin = computed(() => authUser.value?.is_authenticated && authUser.value?.is_staff);
+const sortedPublicSongs = computed(() => {
+  return [...publicSongs.value].sort((left, right) => {
+    const leftMoment = left.moment_display || "Любой момент";
+    const rightMoment = right.moment_display || "Любой момент";
+    if (leftMoment !== rightMoment) {
+      return leftMoment.localeCompare(rightMoment, "ru");
+    }
+    return new Date(left.created_at) - new Date(right.created_at);
+  });
+});
+const djSongGroups = computed(() => {
+  return sortedPublicSongs.value.reduce((groups, song) => {
+    const label = song.moment_display || "Любой момент";
+    if (!groups[label]) {
+      groups[label] = [];
+    }
+    groups[label].push(song);
+    return groups;
+  }, {});
+});
 
 function resetForm() {
   form.guest_name = "";
@@ -46,6 +81,42 @@ function resetForm() {
 
 async function loadPublicSongs() {
   publicSongs.value = await fetchPublicSongs();
+}
+
+async function refreshDjSongs() {
+  djError.value = "";
+  isRefreshingDj.value = true;
+  try {
+    await loadPublicSongs();
+  } catch (error) {
+    djError.value = error.message;
+  } finally {
+    isRefreshingDj.value = false;
+  }
+}
+
+async function detectTrackByLink() {
+  errorMessage.value = "";
+  const link = form.link.trim();
+  if (!link) {
+    errorMessage.value = "Вставьте ссылку на трек.";
+    return;
+  }
+
+  isPreviewingLink.value = true;
+  try {
+    const preview = await previewSongLink(link);
+    if (preview.song_title) {
+      form.song_title = preview.song_title;
+    }
+    if (preview.artist) {
+      form.artist = preview.artist;
+    }
+  } catch (error) {
+    errorMessage.value = error.message;
+  } finally {
+    isPreviewingLink.value = false;
+  }
 }
 
 async function submitSong() {
@@ -74,9 +145,40 @@ async function loadAdminSongs() {
   adminError.value = "";
   try {
     await fetchCsrfToken();
+    authUser.value = await fetchCurrentUser();
+    if (!isAdmin.value) {
+      adminSongs.value = [];
+      return;
+    }
     adminSongs.value = await fetchAllSongs();
   } catch (error) {
-    adminError.value = "Войдите в Django admin, чтобы модерировать заявки.";
+    adminError.value = error.message;
+  }
+}
+
+async function submitLogin() {
+  adminError.value = "";
+  isLoggingIn.value = true;
+  try {
+    await fetchCsrfToken();
+    authUser.value = await loginAdmin(loginForm);
+    loginForm.password = "";
+    await loadAdminSongs();
+  } catch (error) {
+    adminError.value = error.message;
+  } finally {
+    isLoggingIn.value = false;
+  }
+}
+
+async function submitLogout() {
+  adminError.value = "";
+  try {
+    await logoutAdmin();
+    authUser.value = null;
+    adminSongs.value = [];
+  } catch (error) {
+    adminError.value = error.message;
   }
 }
 
@@ -92,18 +194,62 @@ async function toggleApproval(song) {
   }
 }
 
+let djRefreshTimer;
+
 onMounted(async () => {
   moments.value = await fetchMoments();
+  if (isDjView.value) {
+    await refreshDjSongs();
+    djRefreshTimer = window.setInterval(refreshDjSongs, 30000);
+    return;
+  }
   await loadPublicSongs();
   if (isAdminView.value) {
     activeTab.value = "admin";
     await loadAdminSongs();
   }
 });
+
+onUnmounted(() => {
+  if (djRefreshTimer) {
+    window.clearInterval(djRefreshTimer);
+  }
+});
 </script>
 
 <template>
-  <main class="app-shell">
+  <main v-if="isDjView" class="dj-shell">
+    <header class="dj-header">
+      <div>
+        <p class="eyebrow">Wedding music</p>
+        <h1>Плейлист для DJ</h1>
+        <p>Только одобренные заявки. Список обновляется автоматически.</p>
+      </div>
+      <button class="secondary-action" :disabled="isRefreshingDj" @click="refreshDjSongs">
+        {{ isRefreshingDj ? "Обновляем..." : "Обновить" }}
+      </button>
+    </header>
+
+    <p v-if="djError" class="status error">{{ djError }}</p>
+
+    <section v-if="publicSongs.length" class="dj-board">
+      <div v-for="(songs, moment) in djSongGroups" :key="moment" class="dj-group">
+        <h2>{{ moment }}</h2>
+        <article v-for="song in songs" :key="song.id" class="dj-track">
+          <div>
+            <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
+            <span>{{ song.artist || "Исполнитель не указан" }}</span>
+            <p v-if="song.comment">{{ song.comment }}</p>
+            <small>Гость: {{ song.guest_name }}</small>
+          </div>
+          <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">Открыть</a>
+        </article>
+      </div>
+    </section>
+    <p v-else class="empty-state">Одобренных заявок пока нет.</p>
+  </main>
+
+  <main v-else class="app-shell">
     <section class="intro-band">
       <div>
         <p class="eyebrow">Wedding music</p>
@@ -145,7 +291,17 @@ onMounted(async () => {
 
         <label>
           Ссылка
-          <input v-model.trim="form.link" type="url" placeholder="YouTube, Яндекс Музыка, VK, Spotify" />
+          <span class="input-with-action">
+            <input
+              v-model.trim="form.link"
+              type="url"
+              placeholder="YouTube, Яндекс Музыка, VK, Spotify"
+              @blur="form.link && !form.song_title && !isPreviewingLink && detectTrackByLink()"
+            />
+            <button type="button" class="field-action" :disabled="isPreviewingLink" @click="detectTrackByLink">
+              {{ isPreviewingLink ? "Ищем..." : "Определить" }}
+            </button>
+          </span>
         </label>
 
         <label>
@@ -197,21 +353,45 @@ onMounted(async () => {
 
     <section v-if="activeTab === 'admin'" class="admin-panel">
       <div class="admin-header">
-        <h2>Модерация</h2>
-        <a class="secondary-action" :href="csvExportUrl()">CSV</a>
+        <div>
+          <h2>Модерация</h2>
+          <p v-if="isAdmin">Вы вошли как {{ authUser.username }}</p>
+        </div>
+        <div class="admin-actions">
+          <a v-if="isAdmin" class="secondary-action" :href="csvExportUrl()">CSV</a>
+          <button v-if="isAdmin" class="secondary-action muted" @click="submitLogout">Выйти</button>
+        </div>
       </div>
       <p v-if="adminError" class="status error">{{ adminError }}</p>
-      <article v-for="song in adminSongs" :key="song.id" class="admin-row">
-        <div>
-          <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
-          <span>{{ song.guest_name }} · {{ song.artist || "без исполнителя" }}</span>
-          <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">{{ song.link }}</a>
-          <p v-if="song.comment">{{ song.comment }}</p>
-        </div>
-        <button :class="{ approved: song.approved }" @click="toggleApproval(song)">
-          {{ song.approved ? "Одобрено" : "Одобрить" }}
+
+      <form v-if="!isAdmin" class="login-form" @submit.prevent="submitLogin">
+        <label>
+          Логин администратора
+          <input v-model.trim="loginForm.username" autocomplete="username" required />
+        </label>
+        <label>
+          Пароль
+          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-action" :disabled="isLoggingIn">
+          {{ isLoggingIn ? "Входим..." : "Войти" }}
         </button>
-      </article>
+      </form>
+
+      <template v-else>
+        <article v-for="song in adminSongs" :key="song.id" class="admin-row">
+          <div>
+            <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
+            <span>{{ song.guest_name }} · {{ song.artist || "без исполнителя" }}</span>
+            <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">{{ song.link }}</a>
+            <p v-if="song.comment">{{ song.comment }}</p>
+          </div>
+          <button :class="{ approved: song.approved }" @click="toggleApproval(song)">
+            {{ song.approved ? "Одобрено" : "Одобрить" }}
+          </button>
+        </article>
+        <p v-if="!adminSongs.length" class="empty-state">Заявок пока нет.</p>
+      </template>
     </section>
   </main>
 </template>

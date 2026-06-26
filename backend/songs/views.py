@@ -1,13 +1,201 @@
 import csv
+import ipaddress
+import json
+import re
+import socket
+from html import unescape
+from html.parser import HTMLParser
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
 from django.http import HttpResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import SongRequest
 from .serializers import SongModerationSerializer, SongRequestSerializer
+
+
+class MetaTagParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.meta = {}
+        self.title = ""
+        self._in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "title":
+            self._in_title = True
+            return
+        if tag != "meta":
+            return
+        key = attrs.get("property") or attrs.get("name")
+        content = attrs.get("content")
+        if key and content:
+            self.meta[key.lower()] = unescape(content.strip())
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+
+
+OEMBED_ENDPOINTS = {
+    "youtube.com": "https://www.youtube.com/oembed",
+    "youtu.be": "https://www.youtube.com/oembed",
+    "open.spotify.com": "https://open.spotify.com/oembed",
+    "soundcloud.com": "https://soundcloud.com/oembed",
+    "music.apple.com": "https://embed.music.apple.com/oembed",
+    "podcasts.apple.com": "https://embed.podcasts.apple.com/oembed",
+}
+
+
+def fetch_json(url):
+    validate_public_http_url(url)
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "wedding-music/1.0",
+        },
+    )
+    with urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_html_meta(url):
+    validate_public_http_url(url)
+    request = Request(
+        url,
+        headers={
+            "Accept": "text/html",
+            "User-Agent": "Mozilla/5.0 wedding-music/1.0",
+        },
+    )
+    with urlopen(request, timeout=5) as response:
+        parser = MetaTagParser()
+        parser.feed(response.read(300000).decode("utf-8", errors="ignore"))
+        return parser.meta, unescape(parser.title.strip())
+
+
+def oembed_endpoint_for(url):
+    hostname = urlparse(url).hostname or ""
+    hostname = hostname.removeprefix("www.")
+    for domain, endpoint in OEMBED_ENDPOINTS.items():
+        if hostname == domain or hostname.endswith(f".{domain}"):
+            return f"{endpoint}?{urlencode({'url': url, 'format': 'json'})}"
+    return None
+
+
+def validate_public_http_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only public http/https URLs are supported.")
+
+    try:
+        addresses = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as exc:
+        raise ValueError("Unable to resolve URL hostname.") from exc
+
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError("Private URLs are not supported.")
+
+
+def clean_title(value):
+    value = re.sub(r"\s+", " ", value or "").strip()
+    for suffix in [
+        " - YouTube",
+        " | YouTube",
+        " | Spotify",
+        " on Spotify",
+        " - SoundCloud",
+        " | SoundCloud",
+        " - Apple Music",
+        " on Apple Music",
+        " | VK",
+    ]:
+        if value.endswith(suffix):
+            value = value[: -len(suffix)].strip()
+    return value
+
+
+def split_artist_and_title(title, author=""):
+    title = clean_title(title)
+    author = clean_title(author)
+    if author and title.lower().startswith(f"{author.lower()} - "):
+        title = title[len(author) + 3 :].strip()
+    if " - " in title:
+        artist, song_title = [part.strip() for part in title.split(" - ", 1)]
+        if artist and song_title:
+            return artist, song_title
+    if " — " in title:
+        artist, song_title = [part.strip() for part in title.split(" — ", 1)]
+        if artist and song_title:
+            return artist, song_title
+    if " by " in title:
+        song_title, artist = [part.strip() for part in title.rsplit(" by ", 1)]
+        if artist and song_title:
+            return artist, song_title
+    return author, title
+
+
+def preview_song_link(url):
+    validate_public_http_url(url)
+    endpoint = oembed_endpoint_for(url)
+    if endpoint:
+        data = fetch_json(endpoint)
+        artist, song_title = split_artist_and_title(
+            data.get("title", ""),
+            data.get("author_name", ""),
+        )
+        if song_title or artist:
+            return {
+                "song_title": song_title,
+                "artist": artist,
+                "source": "oembed",
+            }
+
+    meta, page_title = fetch_html_meta(url)
+    title = (
+        meta.get("music:song")
+        or meta.get("og:title")
+        or meta.get("twitter:title")
+        or page_title
+    )
+    artist = (
+        meta.get("music:musician")
+        or meta.get("music:creator")
+        or meta.get("article:author")
+        or meta.get("author")
+    )
+    artist, song_title = split_artist_and_title(title, artist)
+    return {
+        "song_title": song_title,
+        "artist": artist,
+        "source": "meta",
+    }
 
 
 class HasRequestSecretOrReadOnly(permissions.BasePermission):
@@ -99,6 +287,30 @@ class SongRequestViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[permissions.AllowAny],
+        url_path="preview-link",
+    )
+    def preview_link(self, request):
+        link = (request.data.get("link") or "").strip()
+        serializer = self.get_serializer(data={"guest_name": "preview", "link": link})
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview = preview_song_link(link)
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+            return Response(
+                {"detail": "Не удалось определить трек по этой ссылке."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not preview["song_title"] and not preview["artist"]:
+            return Response(
+                {"detail": "Не удалось найти название или исполнителя на странице."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(preview)
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -112,3 +324,55 @@ class SongRequestViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+@ensure_csrf_cookie
+def current_user(request):
+    user = request.user
+    if not user.is_authenticated:
+        return Response({"is_authenticated": False, "is_staff": False})
+    return Response(
+        {
+            "is_authenticated": True,
+            "is_staff": user.is_staff,
+            "username": user.get_username(),
+        }
+    )
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response(
+                {"detail": "Неверный логин или пароль."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not user.is_staff:
+            return Response(
+                {"detail": "У пользователя нет доступа к модерации."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        login(request, user)
+        return Response(
+            {
+                "is_authenticated": True,
+                "is_staff": user.is_staff,
+                "username": user.get_username(),
+            }
+        )
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        logout(request)
+        return Response({"detail": "Вы вышли."})

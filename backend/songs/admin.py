@@ -44,6 +44,7 @@ def export_song_requests_csv(modeladmin, request, queryset):
 
 @admin.register(SongRequest)
 class SongRequestAdmin(admin.ModelAdmin):
+    change_list_template = "admin/songs/songrequest/change_list.html"
     list_display = (
         "guest_name",
         "song_title",
