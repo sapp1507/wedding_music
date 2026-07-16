@@ -105,6 +105,15 @@ class WeddingPageAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Изображения",
+            {
+                "fields": (
+                    "hero_image",
+                    "footer_image",
+                )
+            },
+        ),
+        (
             "Место",
             {
                 "fields": (

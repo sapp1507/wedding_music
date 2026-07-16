@@ -20,6 +20,11 @@ class WeddingPage(models.Model):
         max_length=160,
         default="Свадебное приглашение",
     )
+    hero_image = models.ImageField(
+        "Верхнее фото",
+        upload_to="wedding_page/",
+        blank=True,
+    )
     invitation_text = models.TextField(
         "Текст приглашения",
         default=(
@@ -52,6 +57,11 @@ class WeddingPage(models.Model):
         "Финальный заголовок",
         max_length=180,
         default="Будем счастливы видеть вас!",
+    )
+    footer_image = models.ImageField(
+        "Нижнее фото",
+        upload_to="wedding_page/",
+        blank=True,
     )
     footer_text = models.TextField(
         "Финальный текст",

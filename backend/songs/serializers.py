@@ -33,6 +33,8 @@ class WeddingInfoBlockSerializer(serializers.ModelSerializer):
 class WeddingPageSerializer(serializers.ModelSerializer):
     events = serializers.SerializerMethodField()
     faqs = serializers.SerializerMethodField()
+    footer_image_url = serializers.SerializerMethodField()
+    hero_image_url = serializers.SerializerMethodField()
     info_blocks = serializers.SerializerMethodField()
 
     class Meta:
@@ -45,16 +47,32 @@ class WeddingPageSerializer(serializers.ModelSerializer):
             "timezone_name",
             "hero_kicker",
             "invitation_text",
+            "hero_image_url",
             "location_title",
             "location_name",
             "location_address",
             "location_map_url",
             "footer_title",
             "footer_text",
+            "footer_image_url",
             "events",
             "faqs",
             "info_blocks",
         ]
+
+    def absolute_media_url(self, file):
+        if not file:
+            return ""
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(file.url)
+        return file.url
+
+    def get_hero_image_url(self, obj):
+        return self.absolute_media_url(obj.hero_image)
+
+    def get_footer_image_url(self, obj):
+        return self.absolute_media_url(obj.footer_image)
 
     def get_events(self, obj):
         return WeddingEventSerializer(

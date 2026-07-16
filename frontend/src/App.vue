@@ -38,6 +38,7 @@ const DEFAULT_PAGE = {
   wedding_date: "2026-09-04T14:45:00+03:00",
   timezone_name: "Europe/Moscow",
   hero_kicker: "4 сентября 2026",
+  hero_image_url: "",
   invitation_text:
     "В нашей жизни скоро состоится важное событие - наша свадьба. Мы будем рады разделить этот день с вами и провести его в кругу самых близких людей.",
   location_title: "Обновление по месту проведения",
@@ -45,6 +46,7 @@ const DEFAULT_PAGE = {
   location_address: "г. Владимир, Южное шоссе, 23",
   location_map_url: "https://yandex.ru/maps/-/CTRArMpi",
   footer_title: "Будем рады видеть вас на нашем празднике!",
+  footer_image_url: "",
   footer_text: "Спасибо, что разделите с нами этот важный день.",
   events: [],
   faqs: [],
@@ -111,6 +113,8 @@ const isAdminView = computed(() => window.location.pathname.startsWith("/admin-l
 const isDjView = computed(() => window.location.pathname.startsWith("/dj"));
 const isAdmin = computed(() => authUser.value?.is_authenticated && authUser.value?.is_staff);
 const coupleName = computed(() => `${weddingPage.value.groom_name} и ${weddingPage.value.bride_name}`);
+const heroImageStyle = computed(() => imageCssVariable("--hero-image", weddingPage.value.hero_image_url));
+const footerImageStyle = computed(() => imageCssVariable("--footer-image", weddingPage.value.footer_image_url));
 const weddingDate = computed(() => new Date(weddingPage.value.wedding_date));
 const weddingDay = computed(() => {
   return weddingDate.value.toLocaleDateString("ru-RU", {
@@ -151,6 +155,14 @@ function formatEventDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function imageCssVariable(name, url) {
+  if (!url) {
+    return {};
+  }
+  const safeUrl = String(url).replace(/["\\\n\r]/g, "");
+  return { [name]: `url("${safeUrl}")` };
 }
 
 function cookieValue(name) {
@@ -629,7 +641,7 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <section class="wedding-hero">
+    <section class="wedding-hero" :style="heroImageStyle">
       <nav class="top-nav" aria-label="Разделы">
         <strong>{{ weddingPage.groom_name }} + {{ weddingPage.bride_name }}</strong>
         <div class="tabs">
@@ -853,7 +865,7 @@ onUnmounted(() => {
         </details>
       </section>
 
-      <section class="footer-band">
+      <section class="footer-band" :style="footerImageStyle">
         <p class="eyebrow">{{ weddingDay }}</p>
         <h2>{{ weddingPage.footer_title }}</h2>
         <p>{{ weddingPage.footer_text }}</p>

@@ -50,6 +50,10 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
+    location /media/ {
+        alias /usr/share/nginx/media/;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

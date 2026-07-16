@@ -488,7 +488,7 @@ class SongRequestViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.AllowAny])
 def wedding_page(request):
     page = WeddingPage.current()
-    return Response(WeddingPageSerializer(page).data)
+    return Response(WeddingPageSerializer(page, context={"request": request}).data)
 
 
 @api_view(["POST"])
