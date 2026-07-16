@@ -5,6 +5,8 @@ from django.http import HttpResponse
 
 from .models import (
     GuestRSVP,
+    ImportantAnnouncement,
+    SiteVisit,
     SongRequest,
     WeddingEvent,
     WeddingFAQ,
@@ -131,3 +133,49 @@ class GuestRSVPAdmin(admin.ModelAdmin):
     list_filter = ("attendance", "created_at")
     search_fields = ("guest_name", "phone", "comment")
     readonly_fields = ("created_at",)
+
+
+@admin.register(ImportantAnnouncement)
+class ImportantAnnouncementAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "is_active",
+        "show_to_guests",
+        "archived",
+        "view_count",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("is_active", "show_to_guests", "archived", "created_at")
+    search_fields = ("title", "body")
+    readonly_fields = ("view_count", "created_at", "updated_at")
+    fieldsets = (
+        (None, {"fields": ("title", "body")}),
+        (
+            "Показ",
+            {
+                "fields": (
+                    "is_active",
+                    "show_to_guests",
+                    "archived",
+                    "view_count",
+                )
+            },
+        ),
+        ("Служебное", {"fields": ("created_at", "updated_at")}),
+    )
+
+
+@admin.register(SiteVisit)
+class SiteVisitAdmin(admin.ModelAdmin):
+    list_display = ("visitor_id", "visit_count", "first_seen_at", "last_seen_at", "last_path")
+    list_filter = ("first_seen_at", "last_seen_at")
+    search_fields = ("visitor_id", "user_agent", "last_path")
+    readonly_fields = (
+        "visitor_id",
+        "first_seen_at",
+        "last_seen_at",
+        "visit_count",
+        "user_agent",
+        "last_path",
+    )

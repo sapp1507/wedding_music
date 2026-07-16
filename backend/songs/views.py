@@ -11,19 +11,22 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
+from django.db.models import F, Sum
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import SongRequest, WeddingPage
+from .models import ImportantAnnouncement, SiteVisit, SongRequest, WeddingPage
 from .serializers import (
     GuestRSVPSerializer,
+    ImportantAnnouncementSerializer,
+    SiteVisitSerializer,
     SongModerationSerializer,
     SongRequestSerializer,
     WeddingPageSerializer,
@@ -489,6 +492,7 @@ def wedding_page(request):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def create_rsvp(request):
     serializer = GuestRSVPSerializer(data=request.data)
@@ -500,6 +504,89 @@ def create_rsvp(request):
             "response": serializer.data,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def active_announcement(request):
+    announcement = ImportantAnnouncement.active_for_guests()
+    if not announcement:
+        return Response({"announcement": None})
+    return Response({"announcement": ImportantAnnouncementSerializer(announcement).data})
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def mark_announcement_viewed(request, pk):
+    updated = ImportantAnnouncement.objects.filter(
+        pk=pk,
+        show_to_guests=True,
+        archived=False,
+    ).update(view_count=F("view_count") + 1)
+    if not updated:
+        return Response(
+            {"detail": "Модалка не найдена."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return Response({"detail": "Просмотр засчитан."})
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def record_visit(request):
+    serializer = SiteVisitSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    visitor_id = serializer.validated_data["visitor_id"]
+    last_path = serializer.validated_data.get("last_path", "")[:240]
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:1000]
+
+    visit, created = SiteVisit.objects.get_or_create(
+        visitor_id=visitor_id,
+        defaults={
+            "last_path": last_path,
+            "user_agent": user_agent,
+        },
+    )
+    if not created:
+        visit.visit_count = F("visit_count") + 1
+        visit.last_path = last_path
+        visit.user_agent = user_agent
+        visit.save(update_fields=["visit_count", "last_path", "user_agent", "last_seen_at"])
+    return Response({"created": created})
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAdminUser])
+def site_stats(request):
+    visits = SiteVisit.objects.all()
+    announcements = ImportantAnnouncement.objects.order_by("-is_active", "-created_at")
+    total_visits = visits.aggregate(total=Sum("visit_count"))["total"] or 0
+    active = ImportantAnnouncement.active_for_guests()
+
+    return Response(
+        {
+            "unique_visitors": visits.count(),
+            "total_visits": total_visits,
+            "active_announcement": (
+                ImportantAnnouncementSerializer(active).data if active else None
+            ),
+            "announcements": [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "is_active": item.is_active,
+                    "show_to_guests": item.show_to_guests,
+                    "archived": item.archived,
+                    "view_count": item.view_count,
+                    "created_at": item.created_at,
+                    "updated_at": item.updated_at,
+                }
+                for item in announcements[:20]
+            ],
+        }
     )
 
 

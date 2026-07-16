@@ -48,6 +48,49 @@ a {
   overflow-x: hidden;
 }
 
+.modal-backdrop {
+  align-items: center;
+  background: rgba(18, 22, 21, 0.62);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 20;
+}
+
+.announcement-modal {
+  background: #fffaf4;
+  border: 1px solid #ead9c8;
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(18, 22, 21, 0.32);
+  display: grid;
+  gap: 16px;
+  max-height: min(720px, calc(100vh - 36px));
+  max-width: 620px;
+  overflow-y: auto;
+  padding: clamp(22px, 5vw, 42px);
+  width: min(100%, 620px);
+}
+
+.announcement-modal h2 {
+  color: #24201c;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+}
+
+.announcement-modal p:not(.eyebrow) {
+  color: #5d544c;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  margin-bottom: 0;
+  white-space: pre-line;
+}
+
+.announcement-modal .primary-action {
+  justify-self: start;
+  margin-top: 4px;
+}
+
 .wedding-hero {
   background:
     linear-gradient(90deg, rgba(18, 22, 21, 0.88) 0%, rgba(18, 22, 21, 0.62) 46%, rgba(18, 22, 21, 0.18) 100%),
@@ -313,6 +356,8 @@ h3 {
 .song-card,
 .admin-row,
 .share-card,
+.stat-card,
+.announcement-stat-row,
 .rsvp-form,
 .request-form {
   background: #fff;
@@ -673,6 +718,60 @@ details p {
   color: #6c6259;
 }
 
+.stats-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stat-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.stat-card span {
+  color: #6c6259;
+}
+
+.stat-card strong {
+  color: #24201c;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 1;
+}
+
+.announcement-stats {
+  display: grid;
+  gap: 12px;
+}
+
+.announcement-stats h3 {
+  margin: 8px 0 0;
+}
+
+.announcement-stat-row {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+
+.announcement-stat-row div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.announcement-stat-row span {
+  color: #6c6259;
+}
+
+.announcement-stat-row > strong {
+  color: #3e7465;
+  font-size: 1.35rem;
+}
+
 .dj-shell {
   display: grid;
   gap: 22px;
@@ -783,6 +882,7 @@ details p {
   .hero-facts,
   .info-grid,
   .forms-grid,
+  .stats-grid,
   .share-panel {
     grid-template-columns: 1fr;
   }
@@ -800,6 +900,7 @@ details p {
   .song-card,
   .admin-row,
   .admin-row .row-actions,
+  .announcement-stat-row,
   .share-card,
   .dj-track,
   .input-with-action {

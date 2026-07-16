@@ -8,15 +8,19 @@ import {
   csvExportUrl,
   deleteSongRequest,
   fetchAllSongs,
+  fetchAnnouncement,
   fetchCsrfToken,
   fetchCurrentUser,
   fetchMoments,
   fetchPublicSongs,
   fetchShareLinks,
+  fetchSiteStats,
   fetchWeddingPage,
   loginAdmin,
   logoutAdmin,
+  markAnnouncementViewed,
   previewSongLink,
+  recordSiteVisit,
   setSongApproval,
   updateSongRequest,
 } from "./services/api";
@@ -65,9 +69,12 @@ const rsvpForm = reactive({
 });
 
 const weddingPage = ref(DEFAULT_PAGE);
+const activeAnnouncement = ref(null);
+const shouldShowAnnouncement = ref(false);
 const moments = ref(DEFAULT_MOMENTS);
 const publicSongs = ref([]);
 const adminSongs = ref([]);
+const siteStats = ref(null);
 const shareLinks = ref(null);
 const qrCodes = reactive({
   dj_url: "",
@@ -84,6 +91,7 @@ const rsvpSuccess = ref("");
 const rsvpError = ref("");
 const adminError = ref("");
 const djError = ref("");
+const statsError = ref("");
 const shareStatus = ref("");
 const confirmDeleteId = ref(null);
 const authUser = ref(null);
@@ -93,6 +101,7 @@ const loginForm = reactive({
 });
 const rowActions = reactive({});
 const isLoggingIn = ref(false);
+const isLoadingStats = ref(false);
 
 const canSubmit = computed(() => {
   return form.guest_name.trim() && (form.song_title.trim() || form.link.trim());
@@ -142,6 +151,81 @@ function formatEventDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function cookieValue(name) {
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")[1];
+}
+
+function setCookie(name, value, maxAgeSeconds) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/; samesite=lax`;
+}
+
+function getOrCreateVisitorId() {
+  const existing = cookieValue("wedding_visitor_id");
+  if (existing) {
+    return decodeURIComponent(existing);
+  }
+  const generated =
+    window.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  setCookie("wedding_visitor_id", generated, 60 * 60 * 24 * 365);
+  return generated;
+}
+
+function announcementCookieName(id) {
+  return `wedding_announcement_seen_${id}`;
+}
+
+async function recordCurrentVisit() {
+  if (isAdminView.value) {
+    return;
+  }
+  try {
+    await recordSiteVisit({
+      visitor_id: getOrCreateVisitorId(),
+      last_path: window.location.pathname,
+    });
+  } catch (error) {
+    // Visitor statistics should not block the guest experience.
+  }
+}
+
+async function loadAnnouncement() {
+  if (isAdminView.value || isDjView.value) {
+    return;
+  }
+  try {
+    const response = await fetchAnnouncement();
+    activeAnnouncement.value = response.announcement;
+    if (!activeAnnouncement.value) {
+      shouldShowAnnouncement.value = false;
+      return;
+    }
+    shouldShowAnnouncement.value = !cookieValue(
+      announcementCookieName(activeAnnouncement.value.id),
+    );
+  } catch (error) {
+    activeAnnouncement.value = null;
+    shouldShowAnnouncement.value = false;
+  }
+}
+
+async function closeAnnouncement() {
+  if (!activeAnnouncement.value) {
+    shouldShowAnnouncement.value = false;
+    return;
+  }
+  setCookie(announcementCookieName(activeAnnouncement.value.id), "1", 60 * 60 * 24 * 365);
+  shouldShowAnnouncement.value = false;
+  try {
+    await markAnnouncementViewed(activeAnnouncement.value.id);
+  } catch (error) {
+    // The cookie is still set so the guest is not bothered again.
+  }
 }
 
 function resetForm() {
@@ -305,6 +389,24 @@ async function loadShareLinks() {
   }
 }
 
+async function loadSiteStats() {
+  statsError.value = "";
+  isLoadingStats.value = true;
+  try {
+    await fetchCsrfToken();
+    authUser.value = await fetchCurrentUser();
+    if (!isAdmin.value) {
+      siteStats.value = null;
+      return;
+    }
+    siteStats.value = await fetchSiteStats();
+  } catch (error) {
+    statsError.value = error.message;
+  } finally {
+    isLoadingStats.value = false;
+  }
+}
+
 async function copyShareLink(key) {
   if (!shareLinks.value?.[key]) {
     return;
@@ -363,6 +465,9 @@ async function submitLogin() {
     loginForm.password = "";
     await loadAdminSongs();
     await loadShareLinks();
+    if (activeTab.value === "stats") {
+      await loadSiteStats();
+    }
   } catch (error) {
     adminError.value = error.message;
   } finally {
@@ -376,6 +481,7 @@ async function submitLogout() {
     await logoutAdmin();
     authUser.value = null;
     adminSongs.value = [];
+    siteStats.value = null;
   } catch (error) {
     adminError.value = error.message;
   }
@@ -454,6 +560,8 @@ let djRefreshTimer;
 
 onMounted(async () => {
   await loadWeddingPage();
+  await recordCurrentVisit();
+  await loadAnnouncement();
   loadMoments();
   if (isDjView.value) {
     await refreshDjSongs();
@@ -507,6 +615,20 @@ onUnmounted(() => {
   </main>
 
   <main v-else class="app-shell">
+    <div v-if="shouldShowAnnouncement && activeAnnouncement" class="modal-backdrop" role="presentation">
+      <section
+        class="announcement-modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="`announcement-title-${activeAnnouncement.id}`"
+      >
+        <p class="eyebrow">Важная информация</p>
+        <h2 :id="`announcement-title-${activeAnnouncement.id}`">{{ activeAnnouncement.title }}</h2>
+        <p>{{ activeAnnouncement.body }}</p>
+        <button class="primary-action" @click="closeAnnouncement">Понятно</button>
+      </section>
+    </div>
+
     <section class="wedding-hero">
       <nav class="top-nav" aria-label="Разделы">
         <strong>{{ weddingPage.groom_name }} + {{ weddingPage.bride_name }}</strong>
@@ -530,6 +652,13 @@ onUnmounted(() => {
             @click="activeTab = 'links'; loadShareLinks()"
           >
             QR
+          </button>
+          <button
+            v-if="isAdminView"
+            :class="{ active: activeTab === 'stats' }"
+            @click="activeTab = 'stats'; loadSiteStats()"
+          >
+            Статистика
           </button>
           <button v-else @click="goToAdminLogin">
             Войти
@@ -889,6 +1018,68 @@ onUnmounted(() => {
           </button>
         </article>
       </section>
+    </section>
+
+    <section v-if="activeTab === 'stats'" class="admin-panel">
+      <div class="admin-header">
+        <div>
+          <h2>Статистика</h2>
+          <p v-if="isAdmin">Посещения сайта и просмотры важных сообщений.</p>
+        </div>
+        <div class="admin-actions">
+          <button v-if="isAdmin" class="secondary-action muted" :disabled="isLoadingStats" @click="loadSiteStats">
+            {{ isLoadingStats ? "Обновляем..." : "Обновить" }}
+          </button>
+          <button v-if="isAdmin" class="secondary-action muted" @click="submitLogout">Выйти</button>
+        </div>
+      </div>
+      <p v-if="statsError" class="status error">{{ statsError }}</p>
+
+      <form v-if="!isAdmin" class="login-form" @submit.prevent="submitLogin">
+        <label>
+          Логин администратора
+          <input v-model.trim="loginForm.username" autocomplete="username" required />
+        </label>
+        <label>
+          Пароль
+          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-action" :disabled="isLoggingIn">
+          {{ isLoggingIn ? "Входим..." : "Войти" }}
+        </button>
+      </form>
+
+      <template v-else-if="siteStats">
+        <section class="stats-grid" aria-label="Статистика сайта">
+          <article class="stat-card">
+            <span>Уникальные посетители</span>
+            <strong>{{ siteStats.unique_visitors }}</strong>
+          </article>
+          <article class="stat-card">
+            <span>Всего визитов</span>
+            <strong>{{ siteStats.total_visits }}</strong>
+          </article>
+          <article class="stat-card">
+            <span>Просмотров активной модалки</span>
+            <strong>{{ siteStats.active_announcement?.view_count || 0 }}</strong>
+          </article>
+        </section>
+
+        <section class="announcement-stats" aria-label="Статистика модалок">
+          <h3>Модалки</h3>
+          <article v-for="item in siteStats.announcements" :key="item.id" class="announcement-stat-row">
+            <div>
+              <strong>{{ item.title }}</strong>
+              <span>
+                {{ item.is_active ? "активна" : "неактивна" }}
+                · {{ item.show_to_guests ? "показывается гостям" : "скрыта" }}
+                · {{ item.archived ? "архив" : "не в архиве" }}
+              </span>
+            </div>
+            <strong>{{ item.view_count }}</strong>
+          </article>
+        </section>
+      </template>
     </section>
   </main>
 </template>

@@ -167,6 +167,65 @@ class GuestRSVP(models.Model):
         return f"{self.guest_name}: {self.get_attendance_display()}"
 
 
+class ImportantAnnouncement(models.Model):
+    title = models.CharField("Заголовок", max_length=180)
+    body = models.TextField("Текст")
+    is_active = models.BooleanField("Активна", default=False)
+    show_to_guests = models.BooleanField("Показывать гостям", default=True)
+    archived = models.BooleanField("В архиве", default=False)
+    view_count = models.PositiveIntegerField("Просмотров", default=0)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        ordering = ["-is_active", "-created_at"]
+        verbose_name = "важная информация"
+        verbose_name_plural = "важная информация"
+
+    def clean(self):
+        super().clean()
+        if self.archived and self.is_active:
+            raise ValidationError("Архивная модалка не может быть активной.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        if self.is_active and self.show_to_guests and not self.archived:
+            ImportantAnnouncement.objects.exclude(pk=self.pk).filter(
+                is_active=True,
+                show_to_guests=True,
+                archived=False,
+            ).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+    @classmethod
+    def active_for_guests(cls):
+        return cls.objects.filter(
+            is_active=True,
+            show_to_guests=True,
+            archived=False,
+        ).order_by("-created_at").first()
+
+
+class SiteVisit(models.Model):
+    visitor_id = models.CharField("ID посетителя", max_length=64, unique=True)
+    first_seen_at = models.DateTimeField("Первый визит", auto_now_add=True)
+    last_seen_at = models.DateTimeField("Последний визит", auto_now=True)
+    visit_count = models.PositiveIntegerField("Визитов", default=1)
+    user_agent = models.TextField("User-Agent", blank=True)
+    last_path = models.CharField("Последний путь", max_length=240, blank=True)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+        verbose_name = "посетитель сайта"
+        verbose_name_plural = "посетители сайта"
+
+    def __str__(self):
+        return self.visitor_id
+
+
 class SongRequest(models.Model):
     class Moment(models.TextChoices):
         DINNER = "dinner", "Фон на банкете"

@@ -38,6 +38,7 @@ async function request(path, options = {}) {
       data?.detail ||
       data?.link ||
       data?.song_title ||
+      data?.visitor_id ||
       data?.non_field_errors?.[0] ||
       "Не удалось выполнить запрос";
     throw new Error(Array.isArray(message) ? message[0] : message);
@@ -52,6 +53,28 @@ export function fetchMoments() {
 
 export function fetchWeddingPage() {
   return request("/wedding-page/");
+}
+
+export function fetchAnnouncement() {
+  return request("/announcement/");
+}
+
+export function markAnnouncementViewed(id) {
+  return request(`/announcement/${id}/view/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function recordSiteVisit(payload) {
+  return request("/visits/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchSiteStats() {
+  return request("/site-stats/");
 }
 
 export function createRsvp(payload) {

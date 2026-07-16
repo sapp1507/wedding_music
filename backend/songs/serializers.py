@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 from .models import (
     GuestRSVP,
+    ImportantAnnouncement,
+    SiteVisit,
     SongRequest,
     WeddingEvent,
     WeddingFAQ,
@@ -98,6 +100,28 @@ class GuestRSVPSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Укажите хотя бы одного гостя.")
         if value > 10:
             raise serializers.ValidationError("Для большой компании напишите комментарий.")
+        return value
+
+
+class ImportantAnnouncementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportantAnnouncement
+        fields = ["id", "title", "body", "view_count", "created_at", "updated_at"]
+        read_only_fields = fields
+
+
+class SiteVisitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteVisit
+        fields = ["visitor_id", "last_path"]
+        extra_kwargs = {"visitor_id": {"validators": []}}
+
+    def validate_visitor_id(self, value):
+        value = (value or "").strip()
+        if len(value) < 8:
+            raise serializers.ValidationError("Некорректный ID посетителя.")
+        if len(value) > 64:
+            raise serializers.ValidationError("Слишком длинный ID посетителя.")
         return value
 
 
