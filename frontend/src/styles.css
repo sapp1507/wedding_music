@@ -212,18 +212,23 @@ h3 {
 }
 
 .hero-facts article {
-  border-top: 1px solid rgba(255, 250, 245, 0.42);
-  padding-top: 12px;
+  background: rgba(255, 250, 245, 0.7);
+  border: 1px solid rgba(132, 118, 100, 0.18);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(47, 39, 32, 0.1);
+  padding: 12px 14px;
 }
 
 .hero-facts span {
-  color: rgba(255, 250, 245, 0.72);
+  color: #7a6d60;
   display: block;
   font-size: 0.85rem;
   margin-bottom: 4px;
 }
 
 .hero-facts strong {
+  color: #342f2a;
   font-size: clamp(1.1rem, 2vw, 1.55rem);
 }
 
@@ -610,7 +615,7 @@ details p {
 
 .footer-band {
   background:
-    linear-gradient(180deg, rgba(255, 250, 245, 0.78) 0%, rgba(255, 250, 245, 0.18) 22%, rgba(255, 250, 245, 0) 52%),
+    linear-gradient(180deg, #fffdf9 0%, rgba(255, 253, 249, 0.96) 8%, rgba(255, 250, 245, 0.64) 24%, rgba(255, 250, 245, 0.16) 46%, rgba(255, 250, 245, 0) 64%),
     linear-gradient(90deg, rgba(25, 22, 19, 0.46) 0%, rgba(25, 22, 19, 0.16) 42%, rgba(25, 22, 19, 0) 100%),
     url("./assets/wedding-banquet-moto.png");
   background-position: center;
