@@ -35,17 +35,17 @@ const DEFAULT_MOMENTS = [
 const DEFAULT_PAGE = {
   groom_name: "Алексей",
   bride_name: "Мария",
-  wedding_date: "2026-09-04T11:45:00+03:00",
+  wedding_date: "2026-09-04T14:45:00+03:00",
   timezone_name: "Europe/Moscow",
   hero_kicker: "4 сентября 2026",
   invitation_text:
-    "В нашей жизни скоро состоится важное событие - наша свадьба! Мы приглашаем вас и будем рады провести этот особенный день в кругу самых близких людей!",
-  location_title: "Место проведения",
-  location_name: "Мономах",
-  location_address: "Мономах, Владимир, улица Гоголя, 20",
-  location_map_url: "https://yandex.ru/maps/-/CTUQy69U",
-  footer_title: "Будем счастливы видеть вас!",
-  footer_text: "Спасибо, что разделите с нами этот день.",
+    "В нашей жизни скоро состоится важное событие - наша свадьба. Мы будем рады разделить этот день с вами и провести его в кругу самых близких людей.",
+  location_title: "Обновление по месту проведения",
+  location_name: 'Парк-отель "Жемчужина"',
+  location_address: "г. Владимир, Южное шоссе, 23",
+  location_map_url: "https://yandex.ru/maps/-/CTRArMpi",
+  footer_title: "Будем рады видеть вас на нашем празднике!",
+  footer_text: "Спасибо, что разделите с нами этот важный день.",
   events: [],
   faqs: [],
   info_blocks: [],
@@ -288,7 +288,7 @@ async function detectTrackByLink() {
   errorMessage.value = "";
   const link = form.link.trim();
   if (!link) {
-    errorMessage.value = "Вставьте ссылку на трек.";
+    errorMessage.value = "Укажите ссылку на композицию.";
     return;
   }
 
@@ -313,7 +313,7 @@ async function submitSong() {
   successMessage.value = "";
 
   if (!canSubmit.value) {
-    errorMessage.value = "Укажите имя и хотя бы название трека или ссылку.";
+    errorMessage.value = "Укажите имя и название композиции либо ссылку.";
     return;
   }
 
@@ -674,7 +674,7 @@ onUnmounted(() => {
           <a class="primary-action" :href="weddingPage.location_map_url" target="_blank" rel="noreferrer">
             Открыть карту
           </a>
-          <button class="secondary-action" @click="activeTab = 'list'">Посмотреть плейлист</button>
+          <button class="secondary-action" @click="activeTab = 'list'">Музыкальные заявки</button>
         </div>
       </div>
 
@@ -750,7 +750,7 @@ onUnmounted(() => {
         <form class="rsvp-form" @submit.prevent="submitRsvp">
           <div class="section-heading compact">
             <p class="eyebrow">Анкета гостя</p>
-            <h2>Придете ли вы?</h2>
+            <h2>Подтвердите присутствие</h2>
           </div>
           <label>
             Ваше имя
@@ -773,28 +773,28 @@ onUnmounted(() => {
             <input v-model.trim="rsvpForm.phone" maxlength="40" />
           </label>
           <label class="wide">
-            Комментарий
+            Комментарий или пожелание
             <textarea v-model.trim="rsvpForm.comment" rows="4" />
           </label>
           <p v-if="rsvpSuccess" class="status success">{{ rsvpSuccess }}</p>
           <p v-if="rsvpError" class="status error">{{ rsvpError }}</p>
           <button class="primary-action" :disabled="isSubmittingRsvp || !canSubmitRsvp">
-            {{ isSubmittingRsvp ? "Сохраняем..." : "Отправить ответ" }}
+            {{ isSubmittingRsvp ? "Сохраняем..." : "Подтвердить" }}
           </button>
         </form>
 
         <form class="request-form music-form" @submit.prevent="submitSong">
           <div class="section-heading compact wide">
-            <p class="eyebrow">Музыка</p>
-            <h2>Добавьте трек для банкета</h2>
+            <p class="eyebrow">Музыкальные пожелания</p>
+            <h2>Предложите композицию для банкета</h2>
           </div>
           <label>
-            Имя гостя
+            Ваше имя
             <input v-model.trim="form.guest_name" maxlength="100" required />
           </label>
 
           <label>
-            Название трека
+            Название композиции
             <input v-model.trim="form.song_title" maxlength="200" />
           </label>
 
@@ -819,9 +819,9 @@ onUnmounted(() => {
           </label>
 
           <label>
-            Когда включить
+            Предпочтительный момент
             <select v-model="form.moment">
-              <option value="">Не важно</option>
+              <option value="">На усмотрение DJ</option>
               <option v-for="moment in moments" :key="moment.value" :value="moment.value">
                 {{ moment.label }}
               </option>
@@ -837,7 +837,7 @@ onUnmounted(() => {
           <p v-if="errorMessage" class="status error">{{ errorMessage }}</p>
 
           <button class="primary-action" :disabled="isSubmitting || !canSubmit">
-            {{ isSubmitting ? "Отправляем..." : "Отправить трек" }}
+            {{ isSubmitting ? "Отправляем..." : "Отправить заявку" }}
           </button>
         </form>
       </section>
@@ -991,7 +991,7 @@ onUnmounted(() => {
         <article class="share-card">
           <div>
             <h3>DJ</h3>
-            <p>Страница с одобренными треками.</p>
+            <p>Страница с одобренными музыкальными заявками.</p>
             <code>{{ shareLinks.dj_url }}</code>
           </div>
           <button class="qr-button" @click="copyShareQr('dj_url')">
@@ -1006,11 +1006,11 @@ onUnmounted(() => {
         <article class="share-card">
           <div>
             <h3>Гости</h3>
-            <p>Страница добавления треков{{ shareLinks.has_secret ? " с секретом." : "." }}</p>
+            <p>Страница добавления музыкальных заявок{{ shareLinks.has_secret ? " с секретом." : "." }}</p>
             <code>{{ shareLinks.request_url }}</code>
           </div>
           <button class="qr-button" @click="copyShareQr('request_url')">
-            <img :src="qrCodes.request_url" alt="QR-код страницы добавления треков" />
+            <img :src="qrCodes.request_url" alt="QR-код страницы добавления музыкальных заявок" />
             <span>Копировать QR</span>
           </button>
           <button class="text-copy-action" @click="copyShareLink('request_url')">
