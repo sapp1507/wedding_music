@@ -313,6 +313,18 @@ h3 {
   top: calc(clamp(36px, 7vw, 82px) * -1 + 1px);
 }
 
+.location-band::after {
+  background: linear-gradient(180deg, #eef6ec 0%, rgba(238, 246, 236, 0.72) 42%, #fffaf5 100%);
+  bottom: calc(clamp(44px, 8vw, 96px) * -1 + 1px);
+  content: "";
+  height: clamp(44px, 8vw, 96px);
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  z-index: 1;
+}
+
 .section-heading {
   align-items: end;
   display: flex;
@@ -449,10 +461,11 @@ h3 {
   display: grid;
   gap: 24px;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+  padding-top: calc(56px + clamp(20px, 4vw, 48px));
 }
 
 .forms-grid::before {
-  background: linear-gradient(180deg, rgba(238, 246, 236, 0), #fffaf5);
+  background: linear-gradient(180deg, rgba(238, 246, 236, 0.28), #fffaf5);
 }
 
 .rsvp-form,
@@ -585,7 +598,14 @@ details p {
 }
 
 .footer-band::before {
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0), rgba(255, 250, 245, 0.82));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 253, 249, 0) 0%,
+    rgba(255, 250, 245, 0.56) 38%,
+    rgba(255, 250, 245, 0.88) 100%
+  );
+  height: clamp(72px, 12vw, 150px);
+  top: calc(clamp(72px, 12vw, 150px) * -1 + 1px);
 }
 
 .footer-band h2 {
