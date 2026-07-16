@@ -50,6 +50,17 @@ export function fetchMoments() {
   return request("/songs/moments/");
 }
 
+export function fetchWeddingPage() {
+  return request("/wedding-page/");
+}
+
+export function createRsvp(payload) {
+  return request("/rsvp/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchCsrfToken() {
   return request("/csrf/");
 }

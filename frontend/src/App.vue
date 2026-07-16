@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 
 import {
+  createRsvp,
   createSongRequest,
   csvExportUrl,
   deleteSongRequest,
@@ -12,12 +13,39 @@ import {
   fetchMoments,
   fetchPublicSongs,
   fetchShareLinks,
+  fetchWeddingPage,
   loginAdmin,
   logoutAdmin,
   previewSongLink,
   setSongApproval,
   updateSongRequest,
 } from "./services/api";
+
+const DEFAULT_MOMENTS = [
+  { value: "dinner", label: "Фон на банкете" },
+  { value: "dance", label: "Танцы" },
+  { value: "slow", label: "Медляк" },
+  { value: "wishlist", label: "Просто хочу услышать" },
+];
+
+const DEFAULT_PAGE = {
+  groom_name: "Алексей",
+  bride_name: "Мария",
+  wedding_date: "2026-09-04T11:45:00+03:00",
+  timezone_name: "Europe/Moscow",
+  hero_kicker: "4 сентября 2026",
+  invitation_text:
+    "В нашей жизни скоро состоится важное событие - наша свадьба! Мы приглашаем вас и будем рады провести этот особенный день в кругу самых близких людей!",
+  location_title: "Место проведения",
+  location_name: "Мономах",
+  location_address: "Мономах, Владимир, улица Гоголя, 20",
+  location_map_url: "https://yandex.ru/maps/-/CTUQy69U",
+  footer_title: "Будем счастливы видеть вас!",
+  footer_text: "Спасибо, что разделите с нами этот день.",
+  events: [],
+  faqs: [],
+  info_blocks: [],
+};
 
 const form = reactive({
   guest_name: "",
@@ -28,13 +56,15 @@ const form = reactive({
   comment: "",
 });
 
-const DEFAULT_MOMENTS = [
-  { value: "dinner", label: "Фон на банкете" },
-  { value: "dance", label: "Танцы" },
-  { value: "slow", label: "Медляк" },
-  { value: "wishlist", label: "Просто хочу услышать" },
-];
+const rsvpForm = reactive({
+  guest_name: "",
+  attendance: "yes",
+  guests_count: 1,
+  phone: "",
+  comment: "",
+});
 
+const weddingPage = ref(DEFAULT_PAGE);
 const moments = ref(DEFAULT_MOMENTS);
 const publicSongs = ref([]);
 const adminSongs = ref([]);
@@ -43,12 +73,15 @@ const qrCodes = reactive({
   dj_url: "",
   request_url: "",
 });
-const activeTab = ref("request");
+const activeTab = ref("info");
 const isSubmitting = ref(false);
+const isSubmittingRsvp = ref(false);
 const isPreviewingLink = ref(false);
 const isRefreshingDj = ref(false);
 const successMessage = ref("");
 const errorMessage = ref("");
+const rsvpSuccess = ref("");
+const rsvpError = ref("");
 const adminError = ref("");
 const djError = ref("");
 const shareStatus = ref("");
@@ -64,10 +97,25 @@ const isLoggingIn = ref(false);
 const canSubmit = computed(() => {
   return form.guest_name.trim() && (form.song_title.trim() || form.link.trim());
 });
-
+const canSubmitRsvp = computed(() => rsvpForm.guest_name.trim() && rsvpForm.attendance);
 const isAdminView = computed(() => window.location.pathname.startsWith("/admin-list"));
 const isDjView = computed(() => window.location.pathname.startsWith("/dj"));
 const isAdmin = computed(() => authUser.value?.is_authenticated && authUser.value?.is_staff);
+const coupleName = computed(() => `${weddingPage.value.groom_name} и ${weddingPage.value.bride_name}`);
+const weddingDate = computed(() => new Date(weddingPage.value.wedding_date));
+const weddingDay = computed(() => {
+  return weddingDate.value.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+});
+const daysUntilWedding = computed(() => {
+  const today = new Date();
+  const wedding = new Date(weddingDate.value);
+  const diff = wedding.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0);
+  return Math.max(Math.ceil(diff / 86400000), 0);
+});
 const sortedPublicSongs = computed(() => {
   return [...publicSongs.value].sort((left, right) => {
     const leftMoment = left.moment_display || "Любой момент";
@@ -89,6 +137,13 @@ const djSongGroups = computed(() => {
   }, {});
 });
 
+function formatEventDate(value) {
+  return new Date(value).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function resetForm() {
   form.guest_name = "";
   form.song_title = "";
@@ -98,8 +153,24 @@ function resetForm() {
   form.comment = "";
 }
 
+function resetRsvpForm() {
+  rsvpForm.guest_name = "";
+  rsvpForm.attendance = "yes";
+  rsvpForm.guests_count = 1;
+  rsvpForm.phone = "";
+  rsvpForm.comment = "";
+}
+
 function goToAdminLogin() {
   window.location.href = "/admin-list";
+}
+
+async function loadWeddingPage() {
+  try {
+    weddingPage.value = await fetchWeddingPage();
+  } catch (error) {
+    weddingPage.value = DEFAULT_PAGE;
+  }
 }
 
 async function loadPublicSongs() {
@@ -172,6 +243,27 @@ async function submitSong() {
     errorMessage.value = error.message;
   } finally {
     isSubmitting.value = false;
+  }
+}
+
+async function submitRsvp() {
+  rsvpError.value = "";
+  rsvpSuccess.value = "";
+
+  if (!canSubmitRsvp.value) {
+    rsvpError.value = "Укажите имя и выберите ответ.";
+    return;
+  }
+
+  isSubmittingRsvp.value = true;
+  try {
+    const response = await createRsvp(rsvpForm);
+    rsvpSuccess.value = response.message;
+    resetRsvpForm();
+  } catch (error) {
+    rsvpError.value = error.message;
+  } finally {
+    isSubmittingRsvp.value = false;
   }
 }
 
@@ -361,6 +453,7 @@ function cancelDeleteConfirmation(song) {
 let djRefreshTimer;
 
 onMounted(async () => {
+  await loadWeddingPage();
   loadMoments();
   if (isDjView.value) {
     await refreshDjSongs();
@@ -385,7 +478,7 @@ onUnmounted(() => {
   <main v-if="isDjView" class="dj-shell">
     <header class="dj-header">
       <div>
-        <p class="eyebrow">Алексей и Мария · 04.09.2026</p>
+        <p class="eyebrow">{{ coupleName }} · {{ weddingDay }}</p>
         <h1>Плейлист для DJ</h1>
         <p>Одобренные заявки на свадебный банкет. Список обновляется автоматически.</p>
       </div>
@@ -414,109 +507,229 @@ onUnmounted(() => {
   </main>
 
   <main v-else class="app-shell">
-    <section class="intro-band">
-      <div class="intro-copy">
-        <p class="eyebrow">4 сентября 2026 · свадебный банкет</p>
-        <h1>Плейлист для свадьбы Алексея и Марии</h1>
-        <p class="intro-lead">
-          Добавьте трек, который хочется услышать на празднике. Мы соберем заявки,
-          одобрим их и передадим DJ.
-        </p>
-      </div>
-      <nav class="tabs" aria-label="Разделы">
-        <button :class="{ active: activeTab === 'request' }" @click="activeTab = 'request'">
-          Заявка
-        </button>
-        <button :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">
-          Список
-        </button>
-        <button
-          v-if="isAdminView"
-          :class="{ active: activeTab === 'admin' }"
-          @click="activeTab = 'admin'; loadAdminSongs()"
-        >
-          Модерация
-        </button>
-        <button
-          v-if="isAdminView"
-          :class="{ active: activeTab === 'links' }"
-          @click="activeTab = 'links'; loadShareLinks()"
-        >
-          QR
-        </button>
-        <button v-else @click="goToAdminLogin">
-          Войти
-        </button>
+    <section class="wedding-hero">
+      <nav class="top-nav" aria-label="Разделы">
+        <strong>{{ weddingPage.groom_name }} + {{ weddingPage.bride_name }}</strong>
+        <div class="tabs">
+          <button :class="{ active: activeTab === 'info' }" @click="activeTab = 'info'">
+            Информация
+          </button>
+          <button :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">
+            Плейлист
+          </button>
+          <button
+            v-if="isAdminView"
+            :class="{ active: activeTab === 'admin' }"
+            @click="activeTab = 'admin'; loadAdminSongs()"
+          >
+            Модерация
+          </button>
+          <button
+            v-if="isAdminView"
+            :class="{ active: activeTab === 'links' }"
+            @click="activeTab = 'links'; loadShareLinks()"
+          >
+            QR
+          </button>
+          <button v-else @click="goToAdminLogin">
+            Войти
+          </button>
+        </div>
       </nav>
+
+      <div class="hero-content">
+        <p class="eyebrow">{{ weddingPage.hero_kicker }}</p>
+        <h1>{{ coupleName }}</h1>
+        <p class="intro-lead">{{ weddingPage.invitation_text }}</p>
+        <div class="hero-actions">
+          <a class="primary-action" :href="weddingPage.location_map_url" target="_blank" rel="noreferrer">
+            Открыть карту
+          </a>
+          <button class="secondary-action" @click="activeTab = 'list'">Посмотреть плейлист</button>
+        </div>
+      </div>
+
+      <div class="hero-facts" aria-label="Главная информация">
+        <article>
+          <span>Дата</span>
+          <strong>{{ weddingDay }}</strong>
+        </article>
+        <article>
+          <span>Начало</span>
+          <strong>{{ formatEventDate(weddingPage.wedding_date) }}</strong>
+        </article>
+        <article>
+          <span>До свадьбы</span>
+          <strong>{{ daysUntilWedding }} дн.</strong>
+        </article>
+      </div>
     </section>
 
-    <section v-if="activeTab === 'request'" class="content-grid">
-      <form class="request-form" @submit.prevent="submitSong">
-        <label>
-          Имя гостя
-          <input v-model.trim="form.guest_name" maxlength="100" required />
-        </label>
+    <template v-if="activeTab === 'info'">
+      <section class="section-band invitation-section">
+        <div class="section-heading">
+          <p class="eyebrow">Приглашение</p>
+          <h2>Дорогие гости</h2>
+        </div>
+        <p>{{ weddingPage.invitation_text }}</p>
+      </section>
 
-        <label>
-          Название трека
-          <input v-model.trim="form.song_title" maxlength="200" />
-        </label>
-
-        <label>
-          Исполнитель
-          <input v-model.trim="form.artist" maxlength="200" />
-        </label>
-
-        <label>
-          Ссылка
-          <span class="input-with-action">
-            <input
-              v-model.trim="form.link"
-              type="url"
-              placeholder="YouTube, Яндекс Музыка, VK, Spotify"
-              @blur="form.link && !form.song_title && !isPreviewingLink && detectTrackByLink()"
-            />
-            <button type="button" class="field-action" :disabled="isPreviewingLink" @click="detectTrackByLink">
-              {{ isPreviewingLink ? "Ищем..." : "Определить" }}
-            </button>
-          </span>
-        </label>
-
-        <label>
-          Когда включить
-          <select v-model="form.moment">
-            <option value="">Не важно</option>
-            <option v-for="moment in moments" :key="moment.value" :value="moment.value">
-              {{ moment.label }}
-            </option>
-          </select>
-        </label>
-
-        <label class="wide">
-          Комментарий
-          <textarea v-model.trim="form.comment" rows="4" />
-        </label>
-
-        <p v-if="successMessage" class="status success">{{ successMessage }}</p>
-        <p v-if="errorMessage" class="status error">{{ errorMessage }}</p>
-
-        <button class="primary-action" :disabled="isSubmitting || !canSubmit">
-          {{ isSubmitting ? "Отправляем..." : "Отправить трек" }}
-        </button>
-      </form>
-
-      <aside class="side-note">
-        <h2>Что уже одобрено</h2>
-        <div v-if="publicSongs.length" class="compact-list">
-          <article v-for="song in publicSongs.slice(0, 5)" :key="song.id">
-            <strong>{{ song.song_title || "Трек по ссылке" }}</strong>
-            <span>{{ song.artist || song.guest_name }}</span>
-            <a v-if="song.link" :href="song.link" target="_blank" rel="noreferrer">ссылка на трек</a>
+      <section class="section-band program-section">
+        <div class="section-heading">
+          <p class="eyebrow">Расписание</p>
+          <h2>Программа свадьбы</h2>
+        </div>
+        <div class="timeline">
+          <article v-for="event in weddingPage.events" :key="event.id" class="timeline-item">
+            <time>{{ formatEventDate(event.starts_at) }}</time>
+            <div>
+              <h3>{{ event.title }}</h3>
+              <p v-if="event.description">{{ event.description }}</p>
+            </div>
           </article>
         </div>
-        <p v-else>Пока список пуст.</p>
-      </aside>
-    </section>
+      </section>
+
+      <section class="location-band">
+        <div>
+          <p class="eyebrow">{{ weddingPage.location_title }}</p>
+          <h2>{{ weddingPage.location_name }}</h2>
+          <p>{{ weddingPage.location_address }}</p>
+        </div>
+        <a class="primary-action" :href="weddingPage.location_map_url" target="_blank" rel="noreferrer">
+          Построить маршрут
+        </a>
+      </section>
+
+      <section v-if="weddingPage.info_blocks.length" class="section-band">
+        <div class="section-heading">
+          <p class="eyebrow">Важно знать</p>
+          <h2>Полезная информация</h2>
+        </div>
+        <div class="info-grid">
+          <article v-for="block in weddingPage.info_blocks" :key="block.id" class="info-card">
+            <h3>{{ block.title }}</h3>
+            <p>{{ block.body }}</p>
+            <a v-if="block.link_url" :href="block.link_url" target="_blank" rel="noreferrer">
+              {{ block.link_label || "Открыть ссылку" }}
+            </a>
+          </article>
+        </div>
+      </section>
+
+      <section class="forms-grid">
+        <form class="rsvp-form" @submit.prevent="submitRsvp">
+          <div class="section-heading compact">
+            <p class="eyebrow">Анкета гостя</p>
+            <h2>Придете ли вы?</h2>
+          </div>
+          <label>
+            Ваше имя
+            <input v-model.trim="rsvpForm.guest_name" maxlength="120" required />
+          </label>
+          <label>
+            Ответ
+            <select v-model="rsvpForm.attendance">
+              <option value="yes">Приду</option>
+              <option value="maybe">Уточню позже</option>
+              <option value="no">Не смогу</option>
+            </select>
+          </label>
+          <label>
+            Количество гостей
+            <input v-model.number="rsvpForm.guests_count" type="number" min="1" max="10" />
+          </label>
+          <label>
+            Телефон
+            <input v-model.trim="rsvpForm.phone" maxlength="40" />
+          </label>
+          <label class="wide">
+            Комментарий
+            <textarea v-model.trim="rsvpForm.comment" rows="4" />
+          </label>
+          <p v-if="rsvpSuccess" class="status success">{{ rsvpSuccess }}</p>
+          <p v-if="rsvpError" class="status error">{{ rsvpError }}</p>
+          <button class="primary-action" :disabled="isSubmittingRsvp || !canSubmitRsvp">
+            {{ isSubmittingRsvp ? "Сохраняем..." : "Отправить ответ" }}
+          </button>
+        </form>
+
+        <form class="request-form music-form" @submit.prevent="submitSong">
+          <div class="section-heading compact wide">
+            <p class="eyebrow">Музыка</p>
+            <h2>Добавьте трек для банкета</h2>
+          </div>
+          <label>
+            Имя гостя
+            <input v-model.trim="form.guest_name" maxlength="100" required />
+          </label>
+
+          <label>
+            Название трека
+            <input v-model.trim="form.song_title" maxlength="200" />
+          </label>
+
+          <label>
+            Исполнитель
+            <input v-model.trim="form.artist" maxlength="200" />
+          </label>
+
+          <label>
+            Ссылка
+            <span class="input-with-action">
+              <input
+                v-model.trim="form.link"
+                type="url"
+                placeholder="YouTube, Яндекс Музыка, VK, Spotify"
+                @blur="form.link && !form.song_title && !isPreviewingLink && detectTrackByLink()"
+              />
+              <button type="button" class="field-action" :disabled="isPreviewingLink" @click="detectTrackByLink">
+                {{ isPreviewingLink ? "Ищем..." : "Определить" }}
+              </button>
+            </span>
+          </label>
+
+          <label>
+            Когда включить
+            <select v-model="form.moment">
+              <option value="">Не важно</option>
+              <option v-for="moment in moments" :key="moment.value" :value="moment.value">
+                {{ moment.label }}
+              </option>
+            </select>
+          </label>
+
+          <label class="wide">
+            Комментарий
+            <textarea v-model.trim="form.comment" rows="4" />
+          </label>
+
+          <p v-if="successMessage" class="status success">{{ successMessage }}</p>
+          <p v-if="errorMessage" class="status error">{{ errorMessage }}</p>
+
+          <button class="primary-action" :disabled="isSubmitting || !canSubmit">
+            {{ isSubmitting ? "Отправляем..." : "Отправить трек" }}
+          </button>
+        </form>
+      </section>
+
+      <section v-if="weddingPage.faqs.length" class="section-band faq-section">
+        <div class="section-heading">
+          <p class="eyebrow">FAQ</p>
+          <h2>Отвечаем на ваши вопросы</h2>
+        </div>
+        <details v-for="faq in weddingPage.faqs" :key="faq.id">
+          <summary>{{ faq.question }}</summary>
+          <p>{{ faq.answer }}</p>
+        </details>
+      </section>
+
+      <section class="footer-band">
+        <p class="eyebrow">{{ weddingDay }}</p>
+        <h2>{{ weddingPage.footer_title }}</h2>
+        <p>{{ weddingPage.footer_text }}</p>
+      </section>
+    </template>
 
     <section v-if="activeTab === 'list'" class="song-list">
       <article v-for="song in publicSongs" :key="song.id" class="song-card">

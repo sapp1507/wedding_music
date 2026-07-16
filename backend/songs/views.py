@@ -21,8 +21,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import SongRequest
-from .serializers import SongModerationSerializer, SongRequestSerializer
+from .models import SongRequest, WeddingPage
+from .serializers import (
+    GuestRSVPSerializer,
+    SongModerationSerializer,
+    SongRequestSerializer,
+    WeddingPageSerializer,
+)
 
 
 class MetaTagParser(HTMLParser):
@@ -474,6 +479,28 @@ class SongRequestViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def wedding_page(request):
+    page = WeddingPage.current()
+    return Response(WeddingPageSerializer(page).data)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def create_rsvp(request):
+    serializer = GuestRSVPSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(
+        {
+            "message": "Спасибо! Мы сохранили ваш ответ.",
+            "response": serializer.data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET"])

@@ -1,6 +1,104 @@
 from rest_framework import serializers
 
-from .models import SongRequest
+from .models import (
+    GuestRSVP,
+    SongRequest,
+    WeddingEvent,
+    WeddingFAQ,
+    WeddingInfoBlock,
+    WeddingPage,
+)
+
+
+class WeddingEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WeddingEvent
+        fields = ["id", "title", "description", "starts_at", "order"]
+
+
+class WeddingFAQSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WeddingFAQ
+        fields = ["id", "question", "answer", "order"]
+
+
+class WeddingInfoBlockSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WeddingInfoBlock
+        fields = ["id", "title", "body", "link_label", "link_url", "order"]
+
+
+class WeddingPageSerializer(serializers.ModelSerializer):
+    events = serializers.SerializerMethodField()
+    faqs = serializers.SerializerMethodField()
+    info_blocks = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WeddingPage
+        fields = [
+            "id",
+            "groom_name",
+            "bride_name",
+            "wedding_date",
+            "timezone_name",
+            "hero_kicker",
+            "invitation_text",
+            "location_title",
+            "location_name",
+            "location_address",
+            "location_map_url",
+            "footer_title",
+            "footer_text",
+            "events",
+            "faqs",
+            "info_blocks",
+        ]
+
+    def get_events(self, obj):
+        return WeddingEventSerializer(
+            obj.events.filter(is_visible=True),
+            many=True,
+        ).data
+
+    def get_faqs(self, obj):
+        return WeddingFAQSerializer(
+            obj.faqs.filter(is_visible=True),
+            many=True,
+        ).data
+
+    def get_info_blocks(self, obj):
+        return WeddingInfoBlockSerializer(
+            obj.info_blocks.filter(is_visible=True),
+            many=True,
+        ).data
+
+
+class GuestRSVPSerializer(serializers.ModelSerializer):
+    attendance_display = serializers.CharField(
+        source="get_attendance_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = GuestRSVP
+        fields = [
+            "id",
+            "guest_name",
+            "attendance",
+            "attendance_display",
+            "guests_count",
+            "phone",
+            "comment",
+            "created_at",
+        ]
+        read_only_fields = ["id", "attendance_display", "created_at"]
+
+    def validate_guests_count(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Укажите хотя бы одного гостя.")
+        if value > 10:
+            raise serializers.ValidationError("Для большой компании напишите комментарий.")
+        return value
 
 
 class SongRequestSerializer(serializers.ModelSerializer):
