@@ -103,6 +103,23 @@ a {
   display: grid;
   min-height: 88vh;
   padding: 24px clamp(18px, 5vw, 72px) 34px;
+  position: relative;
+}
+
+.wedding-hero::after {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 250, 245, 0) 0%,
+    rgba(255, 250, 245, 0.76) 58%,
+    #fffaf5 100%
+  );
+  bottom: -1px;
+  content: "";
+  height: clamp(78px, 14vw, 150px);
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
 }
 
 .top-nav {
@@ -111,6 +128,8 @@ a {
   display: flex;
   gap: 18px;
   justify-content: space-between;
+  position: relative;
+  z-index: 1;
 }
 
 .top-nav strong {
@@ -121,6 +140,8 @@ a {
 .hero-content {
   align-self: center;
   max-width: 760px;
+  position: relative;
+  z-index: 1;
 }
 
 .eyebrow {
@@ -185,6 +206,8 @@ h3 {
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   max-width: 820px;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-facts article {
@@ -272,6 +295,22 @@ h3 {
 .song-list,
 .admin-panel {
   padding: 56px clamp(18px, 5vw, 72px);
+  position: relative;
+}
+
+.section-band::before,
+.location-band::before,
+.forms-grid::before,
+.footer-band::before,
+.song-list::before,
+.admin-panel::before {
+  content: "";
+  height: clamp(36px, 7vw, 82px);
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: calc(clamp(36px, 7vw, 82px) * -1 + 1px);
 }
 
 .section-heading {
@@ -301,6 +340,10 @@ h3 {
   background: #fffaf5;
 }
 
+.invitation-section::before {
+  background: linear-gradient(180deg, rgba(255, 250, 245, 0), #fffaf5);
+}
+
 .invitation-section > p {
   font-size: clamp(1.2rem, 2.4vw, 2rem);
   line-height: 1.45;
@@ -309,6 +352,10 @@ h3 {
 
 .program-section {
   background: #fffdf9;
+}
+
+.program-section::before {
+  background: linear-gradient(180deg, rgba(255, 250, 245, 0), #fffdf9);
 }
 
 .timeline {
@@ -347,6 +394,10 @@ h3 {
   display: flex;
   gap: 24px;
   justify-content: space-between;
+}
+
+.location-band::before {
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0), #eef6ec);
 }
 
 .location-band p:last-child {
@@ -398,6 +449,10 @@ h3 {
   display: grid;
   gap: 24px;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+}
+
+.forms-grid::before {
+  background: linear-gradient(180deg, rgba(238, 246, 236, 0), #fffaf5);
 }
 
 .rsvp-form,
@@ -491,6 +546,10 @@ textarea {
   background: #fffdf9;
 }
 
+.faq-section::before {
+  background: linear-gradient(180deg, rgba(255, 250, 245, 0), #fffdf9);
+}
+
 details {
   border-top: 1px solid #eadfd4;
   margin: 0 auto;
@@ -525,6 +584,10 @@ details p {
   min-height: 44vh;
 }
 
+.footer-band::before {
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0), rgba(255, 250, 245, 0.82));
+}
+
 .footer-band h2 {
   max-width: 800px;
 }
@@ -539,6 +602,11 @@ details p {
 .admin-panel {
   display: grid;
   gap: 14px;
+}
+
+.song-list::before,
+.admin-panel::before {
+  background: linear-gradient(180deg, rgba(255, 250, 245, 0), #fffaf5);
 }
 
 .song-card,
